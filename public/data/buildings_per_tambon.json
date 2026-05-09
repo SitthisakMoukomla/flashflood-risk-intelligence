@@ -1,0 +1,3323 @@
+{
+  "generated_at": "2026-05-09T08:48:47.033090+00:00",
+  "source": "Google Open Buildings v3 (polygons_s2_level_4)",
+  "conf_threshold": 0.7,
+  "total_buildings": 5603804,
+  "tambon": [
+    {
+      "GID_3": "THA.10.1.2_1",
+      "buildings": 6520,
+      "building_area_m2": 653049
+    },
+    {
+      "GID_3": "THA.10.1.1_1",
+      "buildings": 31322,
+      "building_area_m2": 3752709
+    },
+    {
+      "GID_3": "THA.10.2.1_1",
+      "buildings": 21646,
+      "building_area_m2": 1914155
+    },
+    {
+      "GID_3": "THA.10.2.2_1",
+      "buildings": 9244,
+      "building_area_m2": 858813
+    },
+    {
+      "GID_3": "THA.10.2.3_1",
+      "buildings": 5289,
+      "building_area_m2": 379041
+    },
+    {
+      "GID_3": "THA.10.2.4_1",
+      "buildings": 21729,
+      "building_area_m2": 1941837
+    },
+    {
+      "GID_3": "THA.10.2.5_1",
+      "buildings": 7107,
+      "building_area_m2": 651350
+    },
+    {
+      "GID_3": "THA.10.2.6_1",
+      "buildings": 10658,
+      "building_area_m2": 968869
+    },
+    {
+      "GID_3": "THA.10.2.7_1",
+      "buildings": 5552,
+      "building_area_m2": 556764
+    },
+    {
+      "GID_3": "THA.10.3.1_1",
+      "buildings": 14916,
+      "building_area_m2": 1289721
+    },
+    {
+      "GID_3": "THA.10.3.2_1",
+      "buildings": 12890,
+      "building_area_m2": 1194839
+    },
+    {
+      "GID_3": "THA.10.3.3_1",
+      "buildings": 6093,
+      "building_area_m2": 520992
+    },
+    {
+      "GID_3": "THA.10.3.4_1",
+      "buildings": 15565,
+      "building_area_m2": 1762916
+    },
+    {
+      "GID_3": "THA.10.3.5_1",
+      "buildings": 6832,
+      "building_area_m2": 646423
+    },
+    {
+      "GID_3": "THA.10.3.6_1",
+      "buildings": 14302,
+      "building_area_m2": 1401401
+    },
+    {
+      "GID_3": "THA.10.4.1_1",
+      "buildings": 2462,
+      "building_area_m2": 273387
+    },
+    {
+      "GID_3": "THA.10.4.2_1",
+      "buildings": 29660,
+      "building_area_m2": 3273867
+    },
+    {
+      "GID_3": "THA.10.4.3_1",
+      "buildings": 5096,
+      "building_area_m2": 493618
+    },
+    {
+      "GID_3": "THA.10.4.4_1",
+      "buildings": 3595,
+      "building_area_m2": 353948
+    },
+    {
+      "GID_3": "THA.10.4.5_1",
+      "buildings": 6015,
+      "building_area_m2": 660166
+    },
+    {
+      "GID_3": "THA.10.4.6_1",
+      "buildings": 9118,
+      "building_area_m2": 888526
+    },
+    {
+      "GID_3": "THA.10.4.7_1",
+      "buildings": 4450,
+      "building_area_m2": 430848
+    },
+    {
+      "GID_3": "THA.10.4.8_1",
+      "buildings": 7117,
+      "building_area_m2": 712406
+    },
+    {
+      "GID_3": "THA.10.4.9_1",
+      "buildings": 14203,
+      "building_area_m2": 1620740
+    },
+    {
+      "GID_3": "THA.10.4.10_1",
+      "buildings": 8118,
+      "building_area_m2": 872140
+    },
+    {
+      "GID_3": "THA.10.5.1_1",
+      "buildings": 2317,
+      "building_area_m2": 231654
+    },
+    {
+      "GID_3": "THA.10.5.2_1",
+      "buildings": 3841,
+      "building_area_m2": 334386
+    },
+    {
+      "GID_3": "THA.10.5.3_1",
+      "buildings": 5799,
+      "building_area_m2": 492930
+    },
+    {
+      "GID_3": "THA.10.5.4_1",
+      "buildings": 4082,
+      "building_area_m2": 292976
+    },
+    {
+      "GID_3": "THA.10.5.5_1",
+      "buildings": 7417,
+      "building_area_m2": 535845
+    },
+    {
+      "GID_3": "THA.10.5.6_1",
+      "buildings": 5223,
+      "building_area_m2": 433287
+    },
+    {
+      "GID_3": "THA.10.6.1_1",
+      "buildings": 19358,
+      "building_area_m2": 2284113
+    },
+    {
+      "GID_3": "THA.10.6.2_1",
+      "buildings": 25461,
+      "building_area_m2": 2867311
+    },
+    {
+      "GID_3": "THA.10.6.3_1",
+      "buildings": 24189,
+      "building_area_m2": 2586971
+    },
+    {
+      "GID_3": "THA.10.6.4_1",
+      "buildings": 9281,
+      "building_area_m2": 1113553
+    },
+    {
+      "GID_3": "THA.10.6.5_1",
+      "buildings": 16932,
+      "building_area_m2": 2113460
+    },
+    {
+      "GID_3": "THA.10.7.2_1",
+      "buildings": 7274,
+      "building_area_m2": 776992
+    },
+    {
+      "GID_3": "THA.10.7.3_1",
+      "buildings": 10911,
+      "building_area_m2": 1419074
+    },
+    {
+      "GID_3": "THA.10.7.4_1",
+      "buildings": 5300,
+      "building_area_m2": 523995
+    },
+    {
+      "GID_3": "THA.10.7.5_1",
+      "buildings": 10311,
+      "building_area_m2": 1270978
+    },
+    {
+      "GID_3": "THA.10.7.6_1",
+      "buildings": 5286,
+      "building_area_m2": 569163
+    },
+    {
+      "GID_3": "THA.10.7.7_1",
+      "buildings": 6680,
+      "building_area_m2": 655308
+    },
+    {
+      "GID_3": "THA.10.7.8_1",
+      "buildings": 14938,
+      "building_area_m2": 1902059
+    },
+    {
+      "GID_3": "THA.10.7.9_1",
+      "buildings": 14685,
+      "building_area_m2": 1665409
+    },
+    {
+      "GID_3": "THA.10.7.10_1",
+      "buildings": 4478,
+      "building_area_m2": 503548
+    },
+    {
+      "GID_3": "THA.10.7.1_1",
+      "buildings": 21921,
+      "building_area_m2": 2363693
+    },
+    {
+      "GID_3": "THA.10.8.1_1",
+      "buildings": 6108,
+      "building_area_m2": 522114
+    },
+    {
+      "GID_3": "THA.10.8.2_1",
+      "buildings": 12357,
+      "building_area_m2": 1136564
+    },
+    {
+      "GID_3": "THA.10.8.3_1",
+      "buildings": 6695,
+      "building_area_m2": 518910
+    },
+    {
+      "GID_3": "THA.10.8.4_1",
+      "buildings": 9772,
+      "building_area_m2": 991744
+    },
+    {
+      "GID_3": "THA.10.8.5_1",
+      "buildings": 3205,
+      "building_area_m2": 239705
+    },
+    {
+      "GID_3": "THA.10.8.6_1",
+      "buildings": 4523,
+      "building_area_m2": 288157
+    },
+    {
+      "GID_3": "THA.10.9.2_1",
+      "buildings": 14917,
+      "building_area_m2": 1563937
+    },
+    {
+      "GID_3": "THA.10.9.1_1",
+      "buildings": 19034,
+      "building_area_m2": 1734287
+    },
+    {
+      "GID_3": "THA.10.10.1_1",
+      "buildings": 2456,
+      "building_area_m2": 244932
+    },
+    {
+      "GID_3": "THA.10.10.2_1",
+      "buildings": 4688,
+      "building_area_m2": 496179
+    },
+    {
+      "GID_3": "THA.10.10.3_1",
+      "buildings": 7679,
+      "building_area_m2": 830071
+    },
+    {
+      "GID_3": "THA.10.10.4_1",
+      "buildings": 1923,
+      "building_area_m2": 192089
+    },
+    {
+      "GID_3": "THA.10.11.1_1",
+      "buildings": 5339,
+      "building_area_m2": 499097
+    },
+    {
+      "GID_3": "THA.10.11.2_1",
+      "buildings": 11523,
+      "building_area_m2": 1150227
+    },
+    {
+      "GID_3": "THA.10.11.3_1",
+      "buildings": 12504,
+      "building_area_m2": 1240856
+    },
+    {
+      "GID_3": "THA.10.11.4_1",
+      "buildings": 11613,
+      "building_area_m2": 1260364
+    },
+    {
+      "GID_3": "THA.10.11.5_1",
+      "buildings": 5782,
+      "building_area_m2": 593876
+    },
+    {
+      "GID_3": "THA.10.11.6_1",
+      "buildings": 14832,
+      "building_area_m2": 1393089
+    },
+    {
+      "GID_3": "THA.10.12.2_1",
+      "buildings": 11983,
+      "building_area_m2": 892499
+    },
+    {
+      "GID_3": "THA.10.12.3_1",
+      "buildings": 7431,
+      "building_area_m2": 453738
+    },
+    {
+      "GID_3": "THA.10.12.4_1",
+      "buildings": 11609,
+      "building_area_m2": 1055444
+    },
+    {
+      "GID_3": "THA.10.12.5_1",
+      "buildings": 13405,
+      "building_area_m2": 936180
+    },
+    {
+      "GID_3": "THA.10.12.6_1",
+      "buildings": 10159,
+      "building_area_m2": 787986
+    },
+    {
+      "GID_3": "THA.10.12.7_1",
+      "buildings": 14728,
+      "building_area_m2": 995025
+    },
+    {
+      "GID_3": "THA.10.12.1_1",
+      "buildings": 5821,
+      "building_area_m2": 426821
+    },
+    {
+      "GID_3": "THA.10.13.1_1",
+      "buildings": 15878,
+      "building_area_m2": 2135946
+    },
+    {
+      "GID_3": "THA.10.13.2_1",
+      "buildings": 6857,
+      "building_area_m2": 649642
+    },
+    {
+      "GID_3": "THA.10.13.3_1",
+      "buildings": 8291,
+      "building_area_m2": 945427
+    },
+    {
+      "GID_3": "THA.10.13.4_1",
+      "buildings": 12006,
+      "building_area_m2": 1140406
+    },
+    {
+      "GID_3": "THA.10.13.5_1",
+      "buildings": 6291,
+      "building_area_m2": 777732
+    },
+    {
+      "GID_3": "THA.10.13.6_1",
+      "buildings": 14101,
+      "building_area_m2": 1467790
+    },
+    {
+      "GID_3": "THA.10.13.7_1",
+      "buildings": 9141,
+      "building_area_m2": 1180401
+    },
+    {
+      "GID_3": "THA.10.13.8_1",
+      "buildings": 11318,
+      "building_area_m2": 1263676
+    },
+    {
+      "GID_3": "THA.10.13.9_1",
+      "buildings": 5818,
+      "building_area_m2": 509503
+    },
+    {
+      "GID_3": "THA.10.13.10_1",
+      "buildings": 12389,
+      "building_area_m2": 1215467
+    },
+    {
+      "GID_3": "THA.10.14.2_1",
+      "buildings": 3379,
+      "building_area_m2": 293327
+    },
+    {
+      "GID_3": "THA.10.14.3_1",
+      "buildings": 4155,
+      "building_area_m2": 402003
+    },
+    {
+      "GID_3": "THA.10.14.4_1",
+      "buildings": 1986,
+      "building_area_m2": 186675
+    },
+    {
+      "GID_3": "THA.10.14.5_1",
+      "buildings": 11050,
+      "building_area_m2": 1173732
+    },
+    {
+      "GID_3": "THA.10.14.6_1",
+      "buildings": 6686,
+      "building_area_m2": 513826
+    },
+    {
+      "GID_3": "THA.10.14.7_1",
+      "buildings": 5653,
+      "building_area_m2": 570071
+    },
+    {
+      "GID_3": "THA.10.14.8_1",
+      "buildings": 6727,
+      "building_area_m2": 796204
+    },
+    {
+      "GID_3": "THA.10.14.9_1",
+      "buildings": 5334,
+      "building_area_m2": 439011
+    },
+    {
+      "GID_3": "THA.10.14.10_1",
+      "buildings": 7412,
+      "building_area_m2": 865624
+    },
+    {
+      "GID_3": "THA.10.14.11_1",
+      "buildings": 2964,
+      "building_area_m2": 291740
+    },
+    {
+      "GID_3": "THA.10.14.12_1",
+      "buildings": 8264,
+      "building_area_m2": 803432
+    },
+    {
+      "GID_3": "THA.10.14.1_1",
+      "buildings": 17841,
+      "building_area_m2": 1748685
+    },
+    {
+      "GID_3": "THA.10.15.1_1",
+      "buildings": 17653,
+      "building_area_m2": 1769191
+    },
+    {
+      "GID_3": "THA.10.15.2_1",
+      "buildings": 15847,
+      "building_area_m2": 1317516
+    },
+    {
+      "GID_3": "THA.10.15.3_1",
+      "buildings": 9360,
+      "building_area_m2": 804411
+    },
+    {
+      "GID_3": "THA.10.16.2_1",
+      "buildings": 6486,
+      "building_area_m2": 1026649
+    },
+    {
+      "GID_3": "THA.10.16.3_1",
+      "buildings": 6013,
+      "building_area_m2": 778345
+    },
+    {
+      "GID_3": "THA.10.16.4_1",
+      "buildings": 11454,
+      "building_area_m2": 1567812
+    },
+    {
+      "GID_3": "THA.10.16.5_1",
+      "buildings": 7273,
+      "building_area_m2": 1001706
+    },
+    {
+      "GID_3": "THA.10.16.6_1",
+      "buildings": 6726,
+      "building_area_m2": 1175364
+    },
+    {
+      "GID_3": "THA.10.16.7_1",
+      "buildings": 19687,
+      "building_area_m2": 2524716
+    },
+    {
+      "GID_3": "THA.10.16.8_1",
+      "buildings": 3663,
+      "building_area_m2": 513598
+    },
+    {
+      "GID_3": "THA.10.16.9_1",
+      "buildings": 20040,
+      "building_area_m2": 3071535
+    },
+    {
+      "GID_3": "THA.10.16.10_1",
+      "buildings": 10911,
+      "building_area_m2": 1641474
+    },
+    {
+      "GID_3": "THA.10.16.1_1",
+      "buildings": 66712,
+      "building_area_m2": 9976593
+    },
+    {
+      "GID_3": "THA.10.17.2_1",
+      "buildings": 7411,
+      "building_area_m2": 506903
+    },
+    {
+      "GID_3": "THA.10.17.3_1",
+      "buildings": 3761,
+      "building_area_m2": 261580
+    },
+    {
+      "GID_3": "THA.10.17.4_1",
+      "buildings": 21562,
+      "building_area_m2": 1469891
+    },
+    {
+      "GID_3": "THA.10.17.1_1",
+      "buildings": 18876,
+      "building_area_m2": 1271182
+    },
+    {
+      "GID_3": "THA.10.18.1_1",
+      "buildings": 3769,
+      "building_area_m2": 350692
+    },
+    {
+      "GID_3": "THA.10.18.2_1",
+      "buildings": 4859,
+      "building_area_m2": 566270
+    },
+    {
+      "GID_3": "THA.10.18.3_1",
+      "buildings": 5072,
+      "building_area_m2": 502781
+    },
+    {
+      "GID_3": "THA.10.18.4_1",
+      "buildings": 6108,
+      "building_area_m2": 643960
+    },
+    {
+      "GID_3": "THA.10.18.5_1",
+      "buildings": 3362,
+      "building_area_m2": 312157
+    },
+    {
+      "GID_3": "THA.10.18.6_1",
+      "buildings": 3759,
+      "building_area_m2": 346024
+    },
+    {
+      "GID_3": "THA.10.18.7_1",
+      "buildings": 5368,
+      "building_area_m2": 495780
+    },
+    {
+      "GID_3": "THA.10.18.8_1",
+      "buildings": 11604,
+      "building_area_m2": 1175877
+    },
+    {
+      "GID_3": "THA.10.18.9_1",
+      "buildings": 1513,
+      "building_area_m2": 176849
+    },
+    {
+      "GID_3": "THA.10.18.10_1",
+      "buildings": 2883,
+      "building_area_m2": 384203
+    },
+    {
+      "GID_3": "THA.10.19.1_1",
+      "buildings": 7586,
+      "building_area_m2": 616289
+    },
+    {
+      "GID_3": "THA.10.19.2_1",
+      "buildings": 4631,
+      "building_area_m2": 387625
+    },
+    {
+      "GID_3": "THA.10.19.3_1",
+      "buildings": 4338,
+      "building_area_m2": 439212
+    },
+    {
+      "GID_3": "THA.10.19.4_1",
+      "buildings": 7615,
+      "building_area_m2": 852435
+    },
+    {
+      "GID_3": "THA.10.19.5_1",
+      "buildings": 4767,
+      "building_area_m2": 388382
+    },
+    {
+      "GID_3": "THA.10.20.1_1",
+      "buildings": 7279,
+      "building_area_m2": 774574
+    },
+    {
+      "GID_3": "THA.10.20.2_1",
+      "buildings": 6721,
+      "building_area_m2": 757806
+    },
+    {
+      "GID_3": "THA.10.20.3_1",
+      "buildings": 7105,
+      "building_area_m2": 807247
+    },
+    {
+      "GID_3": "THA.10.20.4_1",
+      "buildings": 31700,
+      "building_area_m2": 3696153
+    },
+    {
+      "GID_3": "THA.10.20.5_1",
+      "buildings": 6374,
+      "building_area_m2": 676782
+    },
+    {
+      "GID_3": "THA.10.20.6_1",
+      "buildings": 16427,
+      "building_area_m2": 1857047
+    },
+    {
+      "GID_3": "THA.10.20.7_1",
+      "buildings": 7792,
+      "building_area_m2": 978224
+    },
+    {
+      "GID_3": "THA.10.21.2_1",
+      "buildings": 10745,
+      "building_area_m2": 1222311
+    },
+    {
+      "GID_3": "THA.10.21.1_1",
+      "buildings": 9441,
+      "building_area_m2": 866462
+    },
+    {
+      "GID_3": "THA.10.21.3_1",
+      "buildings": 9151,
+      "building_area_m2": 826159
+    },
+    {
+      "GID_3": "THA.10.21.4_1",
+      "buildings": 12378,
+      "building_area_m2": 1171330
+    },
+    {
+      "GID_3": "THA.10.21.5_1",
+      "buildings": 13704,
+      "building_area_m2": 1447457
+    },
+    {
+      "GID_3": "THA.10.21.6_1",
+      "buildings": 2545,
+      "building_area_m2": 251860
+    },
+    {
+      "GID_3": "THA.10.21.7_1",
+      "buildings": 6477,
+      "building_area_m2": 573355
+    },
+    {
+      "GID_3": "THA.10.21.8_1",
+      "buildings": 7192,
+      "building_area_m2": 698928
+    },
+    {
+      "GID_3": "THA.10.21.9_1",
+      "buildings": 15313,
+      "building_area_m2": 1672301
+    },
+    {
+      "GID_3": "THA.10.22.2_1",
+      "buildings": 11081,
+      "building_area_m2": 1214506
+    },
+    {
+      "GID_3": "THA.10.22.3_1",
+      "buildings": 13299,
+      "building_area_m2": 1508484
+    },
+    {
+      "GID_3": "THA.10.22.4_1",
+      "buildings": 5541,
+      "building_area_m2": 562721
+    },
+    {
+      "GID_3": "THA.10.22.5_1",
+      "buildings": 17255,
+      "building_area_m2": 2179434
+    },
+    {
+      "GID_3": "THA.10.22.6_1",
+      "buildings": 28845,
+      "building_area_m2": 3622809
+    },
+    {
+      "GID_3": "THA.10.22.7_1",
+      "buildings": 5527,
+      "building_area_m2": 620893
+    },
+    {
+      "GID_3": "THA.10.22.8_1",
+      "buildings": 16927,
+      "building_area_m2": 1857539
+    },
+    {
+      "GID_3": "THA.10.22.1_1",
+      "buildings": 43905,
+      "building_area_m2": 5343763
+    },
+    {
+      "GID_3": "THA.10.23.1_1",
+      "buildings": 6550,
+      "building_area_m2": 928544
+    },
+    {
+      "GID_3": "THA.10.23.2_1",
+      "buildings": 7068,
+      "building_area_m2": 772489
+    },
+    {
+      "GID_3": "THA.10.23.3_1",
+      "buildings": 19009,
+      "building_area_m2": 1985069
+    },
+    {
+      "GID_3": "THA.10.23.4_1",
+      "buildings": 6067,
+      "building_area_m2": 650199
+    },
+    {
+      "GID_3": "THA.10.23.5_1",
+      "buildings": 8025,
+      "building_area_m2": 1133661
+    },
+    {
+      "GID_3": "THA.10.23.6_1",
+      "buildings": 13930,
+      "building_area_m2": 1786620
+    },
+    {
+      "GID_3": "THA.10.23.7_1",
+      "buildings": 5564,
+      "building_area_m2": 744158
+    },
+    {
+      "GID_3": "THA.10.23.8_1",
+      "buildings": 5234,
+      "building_area_m2": 646692
+    },
+    {
+      "GID_3": "THA.10.23.9_1",
+      "buildings": 3207,
+      "building_area_m2": 353808
+    },
+    {
+      "GID_3": "THA.10.23.10_1",
+      "buildings": 13300,
+      "building_area_m2": 1631397
+    },
+    {
+      "GID_3": "THA.10.24.1_1",
+      "buildings": 11140,
+      "building_area_m2": 931240
+    },
+    {
+      "GID_3": "THA.10.24.2_1",
+      "buildings": 16386,
+      "building_area_m2": 1429473
+    },
+    {
+      "GID_3": "THA.11.1.1_1",
+      "buildings": 4182,
+      "building_area_m2": 505857
+    },
+    {
+      "GID_3": "THA.11.1.2_1",
+      "buildings": 10858,
+      "building_area_m2": 1144846
+    },
+    {
+      "GID_3": "THA.11.1.3_1",
+      "buildings": 6234,
+      "building_area_m2": 598461
+    },
+    {
+      "GID_3": "THA.11.1.4_1",
+      "buildings": 7342,
+      "building_area_m2": 951173
+    },
+    {
+      "GID_3": "THA.11.1.5_1",
+      "buildings": 9009,
+      "building_area_m2": 939083
+    },
+    {
+      "GID_3": "THA.11.1.6_1",
+      "buildings": 13848,
+      "building_area_m2": 1578429
+    },
+    {
+      "GID_3": "THA.11.2.1_1",
+      "buildings": 6904,
+      "building_area_m2": 667185
+    },
+    {
+      "GID_3": "THA.11.2.2_1",
+      "buildings": 6912,
+      "building_area_m2": 637843
+    },
+    {
+      "GID_3": "THA.11.2.3_1",
+      "buildings": 8263,
+      "building_area_m2": 803122
+    },
+    {
+      "GID_3": "THA.11.2.4_1",
+      "buildings": 7205,
+      "building_area_m2": 642962
+    },
+    {
+      "GID_3": "THA.11.2.5_1",
+      "buildings": 18616,
+      "building_area_m2": 2127076
+    },
+    {
+      "GID_3": "THA.11.3.2_1",
+      "buildings": 11712,
+      "building_area_m2": 1045731
+    },
+    {
+      "GID_3": "THA.11.3.1_1",
+      "buildings": 7051,
+      "building_area_m2": 637640
+    },
+    {
+      "GID_3": "THA.11.4.1_1",
+      "buildings": 28216,
+      "building_area_m2": 2590967
+    },
+    {
+      "GID_3": "THA.11.5.1_1",
+      "buildings": 5285,
+      "building_area_m2": 604401
+    },
+    {
+      "GID_3": "THA.11.5.2_1",
+      "buildings": 9391,
+      "building_area_m2": 1070315
+    },
+    {
+      "GID_3": "THA.11.5.3_1",
+      "buildings": 6682,
+      "building_area_m2": 764603
+    },
+    {
+      "GID_3": "THA.11.6.2_1",
+      "buildings": 7701,
+      "building_area_m2": 819568
+    },
+    {
+      "GID_3": "THA.11.6.3_1",
+      "buildings": 11284,
+      "building_area_m2": 1253936
+    },
+    {
+      "GID_3": "THA.11.6.4_1",
+      "buildings": 6721,
+      "building_area_m2": 650774
+    },
+    {
+      "GID_3": "THA.11.6.5_1",
+      "buildings": 14842,
+      "building_area_m2": 1509791
+    },
+    {
+      "GID_3": "THA.11.6.6_1",
+      "buildings": 9232,
+      "building_area_m2": 962423
+    },
+    {
+      "GID_3": "THA.11.6.7_1",
+      "buildings": 10006,
+      "building_area_m2": 889385
+    },
+    {
+      "GID_3": "THA.11.6.8_1",
+      "buildings": 7957,
+      "building_area_m2": 778465
+    },
+    {
+      "GID_3": "THA.11.6.1_1",
+      "buildings": 28965,
+      "building_area_m2": 2939582
+    },
+    {
+      "GID_3": "THA.11.7.2_1",
+      "buildings": 10195,
+      "building_area_m2": 795346
+    },
+    {
+      "GID_3": "THA.11.7.1_1",
+      "buildings": 33242,
+      "building_area_m2": 2690896
+    },
+    {
+      "GID_3": "THA.11.8.2_1",
+      "buildings": 5723,
+      "building_area_m2": 614739
+    },
+    {
+      "GID_3": "THA.11.8.3_1",
+      "buildings": 6797,
+      "building_area_m2": 647217
+    },
+    {
+      "GID_3": "THA.11.8.4_1",
+      "buildings": 11647,
+      "building_area_m2": 1154427
+    },
+    {
+      "GID_3": "THA.11.8.5_1",
+      "buildings": 7615,
+      "building_area_m2": 801841
+    },
+    {
+      "GID_3": "THA.11.8.1_1",
+      "buildings": 5069,
+      "building_area_m2": 459554
+    },
+    {
+      "GID_3": "THA.11.9.1_1",
+      "buildings": 5351,
+      "building_area_m2": 556984
+    },
+    {
+      "GID_3": "THA.11.9.2_1",
+      "buildings": 17186,
+      "building_area_m2": 1902546
+    },
+    {
+      "GID_3": "THA.11.9.3_1",
+      "buildings": 10153,
+      "building_area_m2": 1144931
+    },
+    {
+      "GID_3": "THA.11.9.4_1",
+      "buildings": 16624,
+      "building_area_m2": 2478938
+    },
+    {
+      "GID_3": "THA.11.9.5_1",
+      "buildings": 13374,
+      "building_area_m2": 1439451
+    },
+    {
+      "GID_3": "THA.11.9.6_1",
+      "buildings": 6562,
+      "building_area_m2": 722401
+    },
+    {
+      "GID_3": "THA.11.9.7_1",
+      "buildings": 15675,
+      "building_area_m2": 2185035
+    },
+    {
+      "GID_3": "THA.11.10.1_1",
+      "buildings": 5056,
+      "building_area_m2": 548981
+    },
+    {
+      "GID_3": "THA.11.10.2_1",
+      "buildings": 7052,
+      "building_area_m2": 756275
+    },
+    {
+      "GID_3": "THA.11.10.3_1",
+      "buildings": 8718,
+      "building_area_m2": 881695
+    },
+    {
+      "GID_3": "THA.11.10.4_1",
+      "buildings": 8942,
+      "building_area_m2": 938052
+    },
+    {
+      "GID_3": "THA.11.10.5_1",
+      "buildings": 9370,
+      "building_area_m2": 1036581
+    },
+    {
+      "GID_3": "THA.11.10.6_1",
+      "buildings": 15496,
+      "building_area_m2": 1391206
+    },
+    {
+      "GID_3": "THA.11.11.1_1",
+      "buildings": 24116,
+      "building_area_m2": 3108887
+    },
+    {
+      "GID_3": "THA.11.11.2_1",
+      "buildings": 9977,
+      "building_area_m2": 859463
+    },
+    {
+      "GID_3": "THA.11.11.3_1",
+      "buildings": 9302,
+      "building_area_m2": 615922
+    },
+    {
+      "GID_3": "THA.11.11.4_1",
+      "buildings": 20818,
+      "building_area_m2": 1949046
+    },
+    {
+      "GID_3": "THA.11.11.5_1",
+      "buildings": 24763,
+      "building_area_m2": 2899527
+    },
+    {
+      "GID_3": "THA.11.11.6_1",
+      "buildings": 12524,
+      "building_area_m2": 1283301
+    },
+    {
+      "GID_3": "THA.11.11.7_1",
+      "buildings": 18050,
+      "building_area_m2": 1559824
+    },
+    {
+      "GID_3": "THA.11.11.8_1",
+      "buildings": 62841,
+      "building_area_m2": 6530678
+    },
+    {
+      "GID_3": "THA.11.11.9_1",
+      "buildings": 49047,
+      "building_area_m2": 6914643
+    },
+    {
+      "GID_3": "THA.11.11.10_1",
+      "buildings": 12924,
+      "building_area_m2": 1879637
+    },
+    {
+      "GID_3": "THA.11.11.11_1",
+      "buildings": 8239,
+      "building_area_m2": 853753
+    },
+    {
+      "GID_3": "THA.11.12.2_1",
+      "buildings": 5420,
+      "building_area_m2": 616836
+    },
+    {
+      "GID_3": "THA.11.12.3_1",
+      "buildings": 7746,
+      "building_area_m2": 738247
+    },
+    {
+      "GID_3": "THA.11.12.4_1",
+      "buildings": 2958,
+      "building_area_m2": 330600
+    },
+    {
+      "GID_3": "THA.11.12.1_1",
+      "buildings": 5637,
+      "building_area_m2": 596231
+    },
+    {
+      "GID_3": "THA.11.13.2_1",
+      "buildings": 6846,
+      "building_area_m2": 739032
+    },
+    {
+      "GID_3": "THA.11.13.3_1",
+      "buildings": 5425,
+      "building_area_m2": 600161
+    },
+    {
+      "GID_3": "THA.11.13.4_1",
+      "buildings": 6333,
+      "building_area_m2": 669073
+    },
+    {
+      "GID_3": "THA.11.13.5_1",
+      "buildings": 11341,
+      "building_area_m2": 1092756
+    },
+    {
+      "GID_3": "THA.11.13.6_1",
+      "buildings": 6304,
+      "building_area_m2": 741811
+    },
+    {
+      "GID_3": "THA.11.13.7_1",
+      "buildings": 11966,
+      "building_area_m2": 1751041
+    },
+    {
+      "GID_3": "THA.11.13.8_1",
+      "buildings": 7410,
+      "building_area_m2": 758871
+    },
+    {
+      "GID_3": "THA.11.13.9_1",
+      "buildings": 9270,
+      "building_area_m2": 959739
+    },
+    {
+      "GID_3": "THA.11.13.10_1",
+      "buildings": 9795,
+      "building_area_m2": 992289
+    },
+    {
+      "GID_3": "THA.11.13.11_1",
+      "buildings": 4181,
+      "building_area_m2": 544373
+    },
+    {
+      "GID_3": "THA.11.13.12_1",
+      "buildings": 4843,
+      "building_area_m2": 444816
+    },
+    {
+      "GID_3": "THA.11.13.1_1",
+      "buildings": 24596,
+      "building_area_m2": 2534398
+    },
+    {
+      "GID_3": "THA.11.14.1_1",
+      "buildings": 6622,
+      "building_area_m2": 674991
+    },
+    {
+      "GID_3": "THA.11.14.2_1",
+      "buildings": 6536,
+      "building_area_m2": 682604
+    },
+    {
+      "GID_3": "THA.11.14.3_1",
+      "buildings": 9962,
+      "building_area_m2": 1002092
+    },
+    {
+      "GID_3": "THA.11.14.4_1",
+      "buildings": 11514,
+      "building_area_m2": 1129604
+    },
+    {
+      "GID_3": "THA.11.15.1_1",
+      "buildings": 5739,
+      "building_area_m2": 567957
+    },
+    {
+      "GID_3": "THA.11.15.2_1",
+      "buildings": 7590,
+      "building_area_m2": 835788
+    },
+    {
+      "GID_3": "THA.11.15.3_1",
+      "buildings": 7971,
+      "building_area_m2": 800019
+    },
+    {
+      "GID_3": "THA.11.15.4_1",
+      "buildings": 3090,
+      "building_area_m2": 316149
+    },
+    {
+      "GID_3": "THA.11.15.5_1",
+      "buildings": 4574,
+      "building_area_m2": 376160
+    },
+    {
+      "GID_3": "THA.11.15.6_1",
+      "buildings": 25445,
+      "building_area_m2": 2497210
+    },
+    {
+      "GID_3": "THA.11.15.7_1",
+      "buildings": 10522,
+      "building_area_m2": 1319016
+    },
+    {
+      "GID_3": "THA.11.16.1_1",
+      "buildings": 9477,
+      "building_area_m2": 874368
+    },
+    {
+      "GID_3": "THA.11.16.2_1",
+      "buildings": 9105,
+      "building_area_m2": 894310
+    },
+    {
+      "GID_3": "THA.11.16.3_1",
+      "buildings": 17614,
+      "building_area_m2": 1908826
+    },
+    {
+      "GID_3": "THA.11.16.4_1",
+      "buildings": 14333,
+      "building_area_m2": 1453628
+    },
+    {
+      "GID_3": "THA.11.17.1_1",
+      "buildings": 5549,
+      "building_area_m2": 614108
+    },
+    {
+      "GID_3": "THA.11.17.2_1",
+      "buildings": 7693,
+      "building_area_m2": 915719
+    },
+    {
+      "GID_3": "THA.11.17.3_1",
+      "buildings": 7845,
+      "building_area_m2": 747318
+    },
+    {
+      "GID_3": "THA.11.17.4_1",
+      "buildings": 6841,
+      "building_area_m2": 855885
+    },
+    {
+      "GID_3": "THA.11.17.5_1",
+      "buildings": 14753,
+      "building_area_m2": 1437727
+    },
+    {
+      "GID_3": "THA.11.17.6_1",
+      "buildings": 8028,
+      "building_area_m2": 929777
+    },
+    {
+      "GID_3": "THA.11.17.7_1",
+      "buildings": 7776,
+      "building_area_m2": 899076
+    },
+    {
+      "GID_3": "THA.11.18.1_1",
+      "buildings": 5701,
+      "building_area_m2": 539602
+    },
+    {
+      "GID_3": "THA.11.18.2_1",
+      "buildings": 6907,
+      "building_area_m2": 572425
+    },
+    {
+      "GID_3": "THA.11.18.3_1",
+      "buildings": 13747,
+      "building_area_m2": 1134988
+    },
+    {
+      "GID_3": "THA.11.18.4_1",
+      "buildings": 5603,
+      "building_area_m2": 433653
+    },
+    {
+      "GID_3": "THA.19.1.1_1",
+      "buildings": 4676,
+      "building_area_m2": 565828
+    },
+    {
+      "GID_3": "THA.19.1.2_1",
+      "buildings": 11974,
+      "building_area_m2": 1275653
+    },
+    {
+      "GID_3": "THA.19.1.3_1",
+      "buildings": 5901,
+      "building_area_m2": 591087
+    },
+    {
+      "GID_3": "THA.19.1.4_1",
+      "buildings": 2574,
+      "building_area_m2": 201926
+    },
+    {
+      "GID_3": "THA.19.1.5_1",
+      "buildings": 3951,
+      "building_area_m2": 360167
+    },
+    {
+      "GID_3": "THA.19.1.6_1",
+      "buildings": 4004,
+      "building_area_m2": 440570
+    },
+    {
+      "GID_3": "THA.19.2.1_1",
+      "buildings": 9998,
+      "building_area_m2": 1083843
+    },
+    {
+      "GID_3": "THA.19.2.2_1",
+      "buildings": 4633,
+      "building_area_m2": 439097
+    },
+    {
+      "GID_3": "THA.19.2.3_1",
+      "buildings": 9296,
+      "building_area_m2": 809140
+    },
+    {
+      "GID_3": "THA.19.2.4_1",
+      "buildings": 5999,
+      "building_area_m2": 639102
+    },
+    {
+      "GID_3": "THA.19.2.5_1",
+      "buildings": 14350,
+      "building_area_m2": 1584900
+    },
+    {
+      "GID_3": "THA.19.2.6_1",
+      "buildings": 8954,
+      "building_area_m2": 943158
+    },
+    {
+      "GID_3": "THA.19.2.7_1",
+      "buildings": 5168,
+      "building_area_m2": 463606
+    },
+    {
+      "GID_3": "THA.19.3.1_1",
+      "buildings": 8479,
+      "building_area_m2": 905674
+    },
+    {
+      "GID_3": "THA.19.3.2_1",
+      "buildings": 12132,
+      "building_area_m2": 1164838
+    },
+    {
+      "GID_3": "THA.19.3.3_1",
+      "buildings": 21277,
+      "building_area_m2": 1821242
+    },
+    {
+      "GID_3": "THA.19.3.4_1",
+      "buildings": 9617,
+      "building_area_m2": 782268
+    },
+    {
+      "GID_3": "THA.19.3.5_1",
+      "buildings": 3279,
+      "building_area_m2": 271102
+    },
+    {
+      "GID_3": "THA.19.3.6_1",
+      "buildings": 6988,
+      "building_area_m2": 584229
+    },
+    {
+      "GID_3": "THA.19.4.1_1",
+      "buildings": 4201,
+      "building_area_m2": 412630
+    },
+    {
+      "GID_3": "THA.19.4.2_1",
+      "buildings": 4408,
+      "building_area_m2": 425639
+    },
+    {
+      "GID_3": "THA.19.4.3_1",
+      "buildings": 17010,
+      "building_area_m2": 2395859
+    },
+    {
+      "GID_3": "THA.19.4.4_1",
+      "buildings": 3873,
+      "building_area_m2": 399833
+    },
+    {
+      "GID_3": "THA.19.4.5_1",
+      "buildings": 2615,
+      "building_area_m2": 296743
+    },
+    {
+      "GID_3": "THA.19.5.1_1",
+      "buildings": 7667,
+      "building_area_m2": 687818
+    },
+    {
+      "GID_3": "THA.19.5.2_1",
+      "buildings": 3159,
+      "building_area_m2": 333175
+    },
+    {
+      "GID_3": "THA.19.5.3_1",
+      "buildings": 1629,
+      "building_area_m2": 162543
+    },
+    {
+      "GID_3": "THA.19.5.4_1",
+      "buildings": 3212,
+      "building_area_m2": 316738
+    },
+    {
+      "GID_3": "THA.19.6.2_1",
+      "buildings": 4896,
+      "building_area_m2": 395324
+    },
+    {
+      "GID_3": "THA.19.6.3_1",
+      "buildings": 3994,
+      "building_area_m2": 342805
+    },
+    {
+      "GID_3": "THA.19.6.4_1",
+      "buildings": 6933,
+      "building_area_m2": 693375
+    },
+    {
+      "GID_3": "THA.19.6.1_1",
+      "buildings": 47798,
+      "building_area_m2": 4462633
+    },
+    {
+      "GID_3": "THA.19.7.1_1",
+      "buildings": 22274,
+      "building_area_m2": 2497132
+    },
+    {
+      "GID_3": "THA.19.7.2_1",
+      "buildings": 4910,
+      "building_area_m2": 457188
+    },
+    {
+      "GID_3": "THA.19.7.3_1",
+      "buildings": 83374,
+      "building_area_m2": 9515590
+    },
+    {
+      "GID_3": "THA.19.7.4_1",
+      "buildings": 8747,
+      "building_area_m2": 879512
+    },
+    {
+      "GID_3": "THA.19.7.5_1",
+      "buildings": 8086,
+      "building_area_m2": 775867
+    },
+    {
+      "GID_3": "THA.19.7.6_1",
+      "buildings": 10905,
+      "building_area_m2": 920848
+    },
+    {
+      "GID_3": "THA.19.7.7_1",
+      "buildings": 20162,
+      "building_area_m2": 2177588
+    },
+    {
+      "GID_3": "THA.19.7.8_1",
+      "buildings": 21856,
+      "building_area_m2": 2492714
+    },
+    {
+      "GID_3": "THA.19.7.9_1",
+      "buildings": 13571,
+      "building_area_m2": 1264576
+    },
+    {
+      "GID_3": "THA.19.7.10_1",
+      "buildings": 21652,
+      "building_area_m2": 2056364
+    },
+    {
+      "GID_3": "THA.19.8.2_1",
+      "buildings": 7013,
+      "building_area_m2": 656966
+    },
+    {
+      "GID_3": "THA.19.8.3_1",
+      "buildings": 4714,
+      "building_area_m2": 463553
+    },
+    {
+      "GID_3": "THA.19.8.4_1",
+      "buildings": 6913,
+      "building_area_m2": 698962
+    },
+    {
+      "GID_3": "THA.19.8.1_1",
+      "buildings": 9214,
+      "building_area_m2": 888080
+    },
+    {
+      "GID_3": "THA.19.9.1_1",
+      "buildings": 2440,
+      "building_area_m2": 254069
+    },
+    {
+      "GID_3": "THA.19.9.2_1",
+      "buildings": 3422,
+      "building_area_m2": 309078
+    },
+    {
+      "GID_3": "THA.19.9.3_1",
+      "buildings": 4211,
+      "building_area_m2": 421780
+    },
+    {
+      "GID_3": "THA.19.9.4_1",
+      "buildings": 4590,
+      "building_area_m2": 447954
+    },
+    {
+      "GID_3": "THA.19.9.5_1",
+      "buildings": 2703,
+      "building_area_m2": 323437
+    },
+    {
+      "GID_3": "THA.19.9.6_1",
+      "buildings": 4526,
+      "building_area_m2": 530318
+    },
+    {
+      "GID_3": "THA.19.9.7_1",
+      "buildings": 2796,
+      "building_area_m2": 310093
+    },
+    {
+      "GID_3": "THA.19.9.8_1",
+      "buildings": 6487,
+      "building_area_m2": 652401
+    },
+    {
+      "GID_3": "THA.19.9.9_1",
+      "buildings": 5138,
+      "building_area_m2": 526935
+    },
+    {
+      "GID_3": "THA.19.10.1_1",
+      "buildings": 9315,
+      "building_area_m2": 708200
+    },
+    {
+      "GID_3": "THA.19.10.2_1",
+      "buildings": 9990,
+      "building_area_m2": 845170
+    },
+    {
+      "GID_3": "THA.19.10.3_1",
+      "buildings": 9879,
+      "building_area_m2": 774380
+    },
+    {
+      "GID_3": "THA.19.10.4_1",
+      "buildings": 8101,
+      "building_area_m2": 681482
+    },
+    {
+      "GID_3": "THA.19.11.1_1",
+      "buildings": 4520,
+      "building_area_m2": 446753
+    },
+    {
+      "GID_3": "THA.19.11.2_1",
+      "buildings": 4718,
+      "building_area_m2": 430140
+    },
+    {
+      "GID_3": "THA.19.11.3_1",
+      "buildings": 5549,
+      "building_area_m2": 501802
+    },
+    {
+      "GID_3": "THA.19.11.4_1",
+      "buildings": 8967,
+      "building_area_m2": 864051
+    },
+    {
+      "GID_3": "THA.19.12.1_1",
+      "buildings": 3872,
+      "building_area_m2": 380452
+    },
+    {
+      "GID_3": "THA.19.12.2_1",
+      "buildings": 17838,
+      "building_area_m2": 1929791
+    },
+    {
+      "GID_3": "THA.19.12.3_1",
+      "buildings": 6767,
+      "building_area_m2": 599076
+    },
+    {
+      "GID_3": "THA.19.12.4_1",
+      "buildings": 4539,
+      "building_area_m2": 433910
+    },
+    {
+      "GID_3": "THA.19.12.5_1",
+      "buildings": 6155,
+      "building_area_m2": 509424
+    },
+    {
+      "GID_3": "THA.19.12.6_1",
+      "buildings": 5736,
+      "building_area_m2": 563774
+    },
+    {
+      "GID_3": "THA.19.12.7_1",
+      "buildings": 9487,
+      "building_area_m2": 943874
+    },
+    {
+      "GID_3": "THA.19.13.2_1",
+      "buildings": 8593,
+      "building_area_m2": 946513
+    },
+    {
+      "GID_3": "THA.19.13.3_1",
+      "buildings": 4647,
+      "building_area_m2": 577530
+    },
+    {
+      "GID_3": "THA.19.13.1_1",
+      "buildings": 18236,
+      "building_area_m2": 2039319
+    },
+    {
+      "GID_3": "THA.20.1.1_1",
+      "buildings": 14491,
+      "building_area_m2": 1658227
+    },
+    {
+      "GID_3": "THA.20.1.2_1",
+      "buildings": 8350,
+      "building_area_m2": 893755
+    },
+    {
+      "GID_3": "THA.20.1.3_1",
+      "buildings": 6855,
+      "building_area_m2": 582734
+    },
+    {
+      "GID_3": "THA.20.1.4_1",
+      "buildings": 9553,
+      "building_area_m2": 977737
+    },
+    {
+      "GID_3": "THA.20.1.5_1",
+      "buildings": 9120,
+      "building_area_m2": 995335
+    },
+    {
+      "GID_3": "THA.20.2.1_1",
+      "buildings": 10494,
+      "building_area_m2": 1362003
+    },
+    {
+      "GID_3": "THA.20.2.2_1",
+      "buildings": 11098,
+      "building_area_m2": 1244809
+    },
+    {
+      "GID_3": "THA.20.3.2_1",
+      "buildings": 6093,
+      "building_area_m2": 606539
+    },
+    {
+      "GID_3": "THA.20.3.1_1",
+      "buildings": 12297,
+      "building_area_m2": 1317680
+    },
+    {
+      "GID_3": "THA.20.4.1_1",
+      "buildings": 2106,
+      "building_area_m2": 208254
+    },
+    {
+      "GID_3": "THA.20.4.2_1",
+      "buildings": 12103,
+      "building_area_m2": 1373044
+    },
+    {
+      "GID_3": "THA.20.4.3_1",
+      "buildings": 2926,
+      "building_area_m2": 260571
+    },
+    {
+      "GID_3": "THA.20.4.4_1",
+      "buildings": 11106,
+      "building_area_m2": 1182723
+    },
+    {
+      "GID_3": "THA.20.4.5_1",
+      "buildings": 12869,
+      "building_area_m2": 1181266
+    },
+    {
+      "GID_3": "THA.20.4.6_1",
+      "buildings": 11670,
+      "building_area_m2": 1254383
+    },
+    {
+      "GID_3": "THA.20.4.7_1",
+      "buildings": 7657,
+      "building_area_m2": 855093
+    },
+    {
+      "GID_3": "THA.20.5.1_1",
+      "buildings": 5334,
+      "building_area_m2": 432376
+    },
+    {
+      "GID_3": "THA.20.5.2_1",
+      "buildings": 8065,
+      "building_area_m2": 723535
+    },
+    {
+      "GID_3": "THA.20.5.3_1",
+      "buildings": 7467,
+      "building_area_m2": 882036
+    },
+    {
+      "GID_3": "THA.20.5.4_1",
+      "buildings": 11084,
+      "building_area_m2": 1719367
+    },
+    {
+      "GID_3": "THA.20.5.5_1",
+      "buildings": 5880,
+      "building_area_m2": 628159
+    },
+    {
+      "GID_3": "THA.20.6.1_1",
+      "buildings": 11255,
+      "building_area_m2": 2935514
+    },
+    {
+      "GID_3": "THA.20.6.2_1",
+      "buildings": 5202,
+      "building_area_m2": 643755
+    },
+    {
+      "GID_3": "THA.20.6.3_1",
+      "buildings": 14816,
+      "building_area_m2": 2205109
+    },
+    {
+      "GID_3": "THA.20.6.4_1",
+      "buildings": 10111,
+      "building_area_m2": 1089438
+    },
+    {
+      "GID_3": "THA.20.6.5_1",
+      "buildings": 16406,
+      "building_area_m2": 2043721
+    },
+    {
+      "GID_3": "THA.20.6.6_1",
+      "buildings": 3768,
+      "building_area_m2": 389814
+    },
+    {
+      "GID_3": "THA.20.6.7_1",
+      "buildings": 17532,
+      "building_area_m2": 2531800
+    },
+    {
+      "GID_3": "THA.20.6.8_1",
+      "buildings": 34410,
+      "building_area_m2": 4264636
+    },
+    {
+      "GID_3": "THA.20.6.9_1",
+      "buildings": 8382,
+      "building_area_m2": 1153259
+    },
+    {
+      "GID_3": "THA.20.6.10_1",
+      "buildings": 11257,
+      "building_area_m2": 1236888
+    },
+    {
+      "GID_3": "THA.20.6.11_1",
+      "buildings": 7252,
+      "building_area_m2": 1024298
+    },
+    {
+      "GID_3": "THA.20.7.1_1",
+      "buildings": 3654,
+      "building_area_m2": 321464
+    },
+    {
+      "GID_3": "THA.20.7.2_1",
+      "buildings": 7436,
+      "building_area_m2": 748353
+    },
+    {
+      "GID_3": "THA.20.7.3_1",
+      "buildings": 6431,
+      "building_area_m2": 700207
+    },
+    {
+      "GID_3": "THA.20.7.4_1",
+      "buildings": 5272,
+      "building_area_m2": 612355
+    },
+    {
+      "GID_3": "THA.20.7.5_1",
+      "buildings": 11028,
+      "building_area_m2": 1427519
+    },
+    {
+      "GID_3": "THA.20.7.6_1",
+      "buildings": 12265,
+      "building_area_m2": 1257381
+    },
+    {
+      "GID_3": "THA.20.7.7_1",
+      "buildings": 6235,
+      "building_area_m2": 703853
+    },
+    {
+      "GID_3": "THA.20.7.8_1",
+      "buildings": 2111,
+      "building_area_m2": 232388
+    },
+    {
+      "GID_3": "THA.20.7.9_1",
+      "buildings": 9271,
+      "building_area_m2": 903349
+    },
+    {
+      "GID_3": "THA.20.8.1_1",
+      "buildings": 12538,
+      "building_area_m2": 1011504
+    },
+    {
+      "GID_3": "THA.20.8.2_1",
+      "buildings": 9564,
+      "building_area_m2": 761089
+    },
+    {
+      "GID_3": "THA.23.1.2_1",
+      "buildings": 11538,
+      "building_area_m2": 937490
+    },
+    {
+      "GID_3": "THA.23.1.3_1",
+      "buildings": 1567,
+      "building_area_m2": 102487
+    },
+    {
+      "GID_3": "THA.23.1.4_1",
+      "buildings": 3363,
+      "building_area_m2": 248653
+    },
+    {
+      "GID_3": "THA.23.1.5_1",
+      "buildings": 2575,
+      "building_area_m2": 207743
+    },
+    {
+      "GID_3": "THA.23.1.1_1",
+      "buildings": 6464,
+      "building_area_m2": 466983
+    },
+    {
+      "GID_3": "THA.23.2.1_1",
+      "buildings": 1992,
+      "building_area_m2": 148090
+    },
+    {
+      "GID_3": "THA.23.2.2_1",
+      "buildings": 5559,
+      "building_area_m2": 421955
+    },
+    {
+      "GID_3": "THA.23.2.3_1",
+      "buildings": 8293,
+      "building_area_m2": 676285
+    },
+    {
+      "GID_3": "THA.23.2.4_1",
+      "buildings": 5794,
+      "building_area_m2": 395976
+    },
+    {
+      "GID_3": "THA.23.2.5_1",
+      "buildings": 2851,
+      "building_area_m2": 202856
+    },
+    {
+      "GID_3": "THA.23.2.6_1",
+      "buildings": 2744,
+      "building_area_m2": 194558
+    },
+    {
+      "GID_3": "THA.23.3.1_1",
+      "buildings": 11766,
+      "building_area_m2": 1149525
+    },
+    {
+      "GID_3": "THA.23.3.2_1",
+      "buildings": 6883,
+      "building_area_m2": 470554
+    },
+    {
+      "GID_3": "THA.23.3.3_1",
+      "buildings": 3191,
+      "building_area_m2": 263081
+    },
+    {
+      "GID_3": "THA.23.3.4_1",
+      "buildings": 6643,
+      "building_area_m2": 717435
+    },
+    {
+      "GID_3": "THA.23.3.5_1",
+      "buildings": 7426,
+      "building_area_m2": 676981
+    },
+    {
+      "GID_3": "THA.23.3.6_1",
+      "buildings": 4813,
+      "building_area_m2": 374667
+    },
+    {
+      "GID_3": "THA.23.3.7_1",
+      "buildings": 1759,
+      "building_area_m2": 125923
+    },
+    {
+      "GID_3": "THA.23.4.1_1",
+      "buildings": 11181,
+      "building_area_m2": 1117393
+    },
+    {
+      "GID_3": "THA.23.4.2_1",
+      "buildings": 7356,
+      "building_area_m2": 556927
+    },
+    {
+      "GID_3": "THA.23.4.3_1",
+      "buildings": 1595,
+      "building_area_m2": 115650
+    },
+    {
+      "GID_3": "THA.23.4.4_1",
+      "buildings": 6455,
+      "building_area_m2": 511079
+    },
+    {
+      "GID_3": "THA.23.4.5_1",
+      "buildings": 19609,
+      "building_area_m2": 1763479
+    },
+    {
+      "GID_3": "THA.23.4.6_1",
+      "buildings": 9426,
+      "building_area_m2": 806251
+    },
+    {
+      "GID_3": "THA.23.5.1_1",
+      "buildings": 2759,
+      "building_area_m2": 214234
+    },
+    {
+      "GID_3": "THA.23.5.2_1",
+      "buildings": 9252,
+      "building_area_m2": 647468
+    },
+    {
+      "GID_3": "THA.23.5.3_1",
+      "buildings": 3220,
+      "building_area_m2": 262662
+    },
+    {
+      "GID_3": "THA.23.5.4_1",
+      "buildings": 3955,
+      "building_area_m2": 236761
+    },
+    {
+      "GID_3": "THA.23.5.5_1",
+      "buildings": 7273,
+      "building_area_m2": 573183
+    },
+    {
+      "GID_3": "THA.23.5.6_1",
+      "buildings": 5855,
+      "building_area_m2": 400683
+    },
+    {
+      "GID_3": "THA.23.5.7_1",
+      "buildings": 10696,
+      "building_area_m2": 1040186
+    },
+    {
+      "GID_3": "THA.23.6.1_1",
+      "buildings": 4837,
+      "building_area_m2": 411357
+    },
+    {
+      "GID_3": "THA.23.6.2_1",
+      "buildings": 11093,
+      "building_area_m2": 723246
+    },
+    {
+      "GID_3": "THA.23.7.1_1",
+      "buildings": 5471,
+      "building_area_m2": 315630
+    },
+    {
+      "GID_3": "THA.23.7.2_1",
+      "buildings": 4910,
+      "building_area_m2": 406979
+    },
+    {
+      "GID_3": "THA.23.7.3_1",
+      "buildings": 4591,
+      "building_area_m2": 353866
+    },
+    {
+      "GID_3": "THA.23.7.4_1",
+      "buildings": 4430,
+      "building_area_m2": 290252
+    },
+    {
+      "GID_3": "THA.23.7.5_1",
+      "buildings": 4840,
+      "building_area_m2": 266844
+    },
+    {
+      "GID_3": "THA.23.7.6_1",
+      "buildings": 3960,
+      "building_area_m2": 317761
+    },
+    {
+      "GID_3": "THA.32.1.1_1",
+      "buildings": 3538,
+      "building_area_m2": 268704
+    },
+    {
+      "GID_3": "THA.32.1.2_1",
+      "buildings": 2876,
+      "building_area_m2": 231703
+    },
+    {
+      "GID_3": "THA.32.1.3_1",
+      "buildings": 3215,
+      "building_area_m2": 286535
+    },
+    {
+      "GID_3": "THA.32.1.4_1",
+      "buildings": 3031,
+      "building_area_m2": 231151
+    },
+    {
+      "GID_3": "THA.32.2.1_1",
+      "buildings": 7196,
+      "building_area_m2": 614917
+    },
+    {
+      "GID_3": "THA.32.3.1_1",
+      "buildings": 9959,
+      "building_area_m2": 626704
+    },
+    {
+      "GID_3": "THA.32.4.1_1",
+      "buildings": 2087,
+      "building_area_m2": 188183
+    },
+    {
+      "GID_3": "THA.32.4.2_1",
+      "buildings": 5950,
+      "building_area_m2": 618207
+    },
+    {
+      "GID_3": "THA.32.4.3_1",
+      "buildings": 2684,
+      "building_area_m2": 266629
+    },
+    {
+      "GID_3": "THA.32.4.4_1",
+      "buildings": 4259,
+      "building_area_m2": 388490
+    },
+    {
+      "GID_3": "THA.32.4.5_1",
+      "buildings": 3709,
+      "building_area_m2": 318425
+    },
+    {
+      "GID_3": "THA.32.4.6_1",
+      "buildings": 7646,
+      "building_area_m2": 783896
+    },
+    {
+      "GID_3": "THA.32.5.1_1",
+      "buildings": 33221,
+      "building_area_m2": 3198594
+    },
+    {
+      "GID_3": "THA.32.6.1_1",
+      "buildings": 1666,
+      "building_area_m2": 158497
+    },
+    {
+      "GID_3": "THA.32.6.2_1",
+      "buildings": 1928,
+      "building_area_m2": 166602
+    },
+    {
+      "GID_3": "THA.32.6.3_1",
+      "buildings": 1917,
+      "building_area_m2": 144129
+    },
+    {
+      "GID_3": "THA.32.6.4_1",
+      "buildings": 1692,
+      "building_area_m2": 147972
+    },
+    {
+      "GID_3": "THA.32.6.5_1",
+      "buildings": 3699,
+      "building_area_m2": 365101
+    },
+    {
+      "GID_3": "THA.32.7.2_1",
+      "buildings": 3563,
+      "building_area_m2": 282059
+    },
+    {
+      "GID_3": "THA.32.7.3_1",
+      "buildings": 9785,
+      "building_area_m2": 1212888
+    },
+    {
+      "GID_3": "THA.32.7.4_1",
+      "buildings": 9423,
+      "building_area_m2": 1113336
+    },
+    {
+      "GID_3": "THA.32.7.5_1",
+      "buildings": 4764,
+      "building_area_m2": 448430
+    },
+    {
+      "GID_3": "THA.32.7.6_1",
+      "buildings": 11696,
+      "building_area_m2": 1494556
+    },
+    {
+      "GID_3": "THA.32.7.7_1",
+      "buildings": 9887,
+      "building_area_m2": 842000
+    },
+    {
+      "GID_3": "THA.32.7.8_1",
+      "buildings": 7343,
+      "building_area_m2": 605890
+    },
+    {
+      "GID_3": "THA.32.7.9_1",
+      "buildings": 3727,
+      "building_area_m2": 338042
+    },
+    {
+      "GID_3": "THA.32.7.1_1",
+      "buildings": 15591,
+      "building_area_m2": 1785454
+    },
+    {
+      "GID_3": "THA.32.8.1_1",
+      "buildings": 5866,
+      "building_area_m2": 602674
+    },
+    {
+      "GID_3": "THA.32.8.2_1",
+      "buildings": 1456,
+      "building_area_m2": 133695
+    },
+    {
+      "GID_3": "THA.32.8.3_1",
+      "buildings": 2354,
+      "building_area_m2": 205436
+    },
+    {
+      "GID_3": "THA.32.9.1_1",
+      "buildings": 2268,
+      "building_area_m2": 251676
+    },
+    {
+      "GID_3": "THA.32.9.2_1",
+      "buildings": 1059,
+      "building_area_m2": 125387
+    },
+    {
+      "GID_3": "THA.32.9.3_1",
+      "buildings": 2799,
+      "building_area_m2": 355694
+    },
+    {
+      "GID_3": "THA.32.9.4_1",
+      "buildings": 1384,
+      "building_area_m2": 164896
+    },
+    {
+      "GID_3": "THA.32.9.5_1",
+      "buildings": 3572,
+      "building_area_m2": 370050
+    },
+    {
+      "GID_3": "THA.32.9.6_1",
+      "buildings": 3204,
+      "building_area_m2": 348166
+    },
+    {
+      "GID_3": "THA.32.9.7_1",
+      "buildings": 4493,
+      "building_area_m2": 551244
+    },
+    {
+      "GID_3": "THA.32.10.1_1",
+      "buildings": 4913,
+      "building_area_m2": 476669
+    },
+    {
+      "GID_3": "THA.32.10.2_1",
+      "buildings": 5668,
+      "building_area_m2": 549906
+    },
+    {
+      "GID_3": "THA.32.10.3_1",
+      "buildings": 3667,
+      "building_area_m2": 332857
+    },
+    {
+      "GID_3": "THA.32.10.4_1",
+      "buildings": 3244,
+      "building_area_m2": 316036
+    },
+    {
+      "GID_3": "THA.32.10.5_1",
+      "buildings": 2677,
+      "building_area_m2": 180536
+    },
+    {
+      "GID_3": "THA.32.10.6_1",
+      "buildings": 11010,
+      "building_area_m2": 1282182
+    },
+    {
+      "GID_3": "THA.32.10.7_1",
+      "buildings": 1200,
+      "building_area_m2": 106976
+    },
+    {
+      "GID_3": "THA.32.10.8_1",
+      "buildings": 4210,
+      "building_area_m2": 407089
+    },
+    {
+      "GID_3": "THA.32.10.9_1",
+      "buildings": 4686,
+      "building_area_m2": 471171
+    },
+    {
+      "GID_3": "THA.32.10.10_1",
+      "buildings": 3489,
+      "building_area_m2": 348207
+    },
+    {
+      "GID_3": "THA.32.10.11_1",
+      "buildings": 3950,
+      "building_area_m2": 350738
+    },
+    {
+      "GID_3": "THA.32.11.1_1",
+      "buildings": 4431,
+      "building_area_m2": 412447
+    },
+    {
+      "GID_3": "THA.32.11.2_1",
+      "buildings": 4733,
+      "building_area_m2": 411660
+    },
+    {
+      "GID_3": "THA.32.11.3_1",
+      "buildings": 2800,
+      "building_area_m2": 243570
+    },
+    {
+      "GID_3": "THA.32.12.1_1",
+      "buildings": 3525,
+      "building_area_m2": 231628
+    },
+    {
+      "GID_3": "THA.32.12.2_1",
+      "buildings": 4517,
+      "building_area_m2": 367142
+    },
+    {
+      "GID_3": "THA.32.12.3_1",
+      "buildings": 2622,
+      "building_area_m2": 206086
+    },
+    {
+      "GID_3": "THA.32.13.1_1",
+      "buildings": 5799,
+      "building_area_m2": 528693
+    },
+    {
+      "GID_3": "THA.32.13.2_1",
+      "buildings": 5446,
+      "building_area_m2": 481076
+    },
+    {
+      "GID_3": "THA.32.13.3_1",
+      "buildings": 4584,
+      "building_area_m2": 387702
+    },
+    {
+      "GID_3": "THA.32.13.4_1",
+      "buildings": 4697,
+      "building_area_m2": 361366
+    },
+    {
+      "GID_3": "THA.32.13.5_1",
+      "buildings": 3696,
+      "building_area_m2": 457598
+    },
+    {
+      "GID_3": "THA.32.13.6_1",
+      "buildings": 3818,
+      "building_area_m2": 318591
+    },
+    {
+      "GID_3": "THA.32.13.7_1",
+      "buildings": 4819,
+      "building_area_m2": 434119
+    },
+    {
+      "GID_3": "THA.32.13.8_1",
+      "buildings": 5057,
+      "building_area_m2": 437996
+    },
+    {
+      "GID_3": "THA.32.13.9_1",
+      "buildings": 3916,
+      "building_area_m2": 422275
+    },
+    {
+      "GID_3": "THA.32.13.10_1",
+      "buildings": 3642,
+      "building_area_m2": 337542
+    },
+    {
+      "GID_3": "THA.32.14.1_1",
+      "buildings": 4533,
+      "building_area_m2": 410339
+    },
+    {
+      "GID_3": "THA.32.14.2_1",
+      "buildings": 3116,
+      "building_area_m2": 256695
+    },
+    {
+      "GID_3": "THA.32.14.3_1",
+      "buildings": 3251,
+      "building_area_m2": 224742
+    },
+    {
+      "GID_3": "THA.32.14.4_1",
+      "buildings": 4416,
+      "building_area_m2": 415325
+    },
+    {
+      "GID_3": "THA.32.15.2_1",
+      "buildings": 6226,
+      "building_area_m2": 676409
+    },
+    {
+      "GID_3": "THA.32.15.3_1",
+      "buildings": 2835,
+      "building_area_m2": 273222
+    },
+    {
+      "GID_3": "THA.32.15.4_1",
+      "buildings": 7984,
+      "building_area_m2": 971816
+    },
+    {
+      "GID_3": "THA.32.15.5_1",
+      "buildings": 3788,
+      "building_area_m2": 358110
+    },
+    {
+      "GID_3": "THA.32.15.6_1",
+      "buildings": 3237,
+      "building_area_m2": 213435
+    },
+    {
+      "GID_3": "THA.32.15.7_1",
+      "buildings": 1729,
+      "building_area_m2": 157887
+    },
+    {
+      "GID_3": "THA.32.15.8_1",
+      "buildings": 2532,
+      "building_area_m2": 224340
+    },
+    {
+      "GID_3": "THA.32.15.9_1",
+      "buildings": 2624,
+      "building_area_m2": 267861
+    },
+    {
+      "GID_3": "THA.32.15.10_1",
+      "buildings": 4386,
+      "building_area_m2": 429088
+    },
+    {
+      "GID_3": "THA.32.15.11_1",
+      "buildings": 5696,
+      "building_area_m2": 609031
+    },
+    {
+      "GID_3": "THA.32.15.12_1",
+      "buildings": 4069,
+      "building_area_m2": 327020
+    },
+    {
+      "GID_3": "THA.32.15.1_1",
+      "buildings": 15032,
+      "building_area_m2": 1366536
+    },
+    {
+      "GID_3": "THA.41.1.1_1",
+      "buildings": 5187,
+      "building_area_m2": 509874
+    },
+    {
+      "GID_3": "THA.41.1.2_1",
+      "buildings": 4149,
+      "building_area_m2": 449368
+    },
+    {
+      "GID_3": "THA.41.1.3_1",
+      "buildings": 5654,
+      "building_area_m2": 722061
+    },
+    {
+      "GID_3": "THA.41.1.4_1",
+      "buildings": 8505,
+      "building_area_m2": 851411
+    },
+    {
+      "GID_3": "THA.41.1.5_1",
+      "buildings": 6391,
+      "building_area_m2": 663698
+    },
+    {
+      "GID_3": "THA.41.1.6_1",
+      "buildings": 7276,
+      "building_area_m2": 823541
+    },
+    {
+      "GID_3": "THA.41.1.7_1",
+      "buildings": 7964,
+      "building_area_m2": 825997
+    },
+    {
+      "GID_3": "THA.41.1.8_1",
+      "buildings": 3617,
+      "building_area_m2": 389811
+    },
+    {
+      "GID_3": "THA.41.1.9_1",
+      "buildings": 8249,
+      "building_area_m2": 1164169
+    },
+    {
+      "GID_3": "THA.41.2.1_1",
+      "buildings": 4457,
+      "building_area_m2": 523265
+    },
+    {
+      "GID_3": "THA.41.2.2_1",
+      "buildings": 5128,
+      "building_area_m2": 535052
+    },
+    {
+      "GID_3": "THA.41.2.3_1",
+      "buildings": 4832,
+      "building_area_m2": 534688
+    },
+    {
+      "GID_3": "THA.41.3.1_1",
+      "buildings": 11779,
+      "building_area_m2": 1132821
+    },
+    {
+      "GID_3": "THA.41.3.2_1",
+      "buildings": 18619,
+      "building_area_m2": 2043372
+    },
+    {
+      "GID_3": "THA.41.3.3_1",
+      "buildings": 3403,
+      "building_area_m2": 391180
+    },
+    {
+      "GID_3": "THA.41.3.4_1",
+      "buildings": 5857,
+      "building_area_m2": 669420
+    },
+    {
+      "GID_3": "THA.41.4.1_1",
+      "buildings": 45575,
+      "building_area_m2": 5356852
+    },
+    {
+      "GID_3": "THA.41.5.1_1",
+      "buildings": 15711,
+      "building_area_m2": 1758234
+    },
+    {
+      "GID_3": "THA.41.6.1_1",
+      "buildings": 21777,
+      "building_area_m2": 2579240
+    },
+    {
+      "GID_3": "THA.41.7.1_1",
+      "buildings": 6253,
+      "building_area_m2": 669274
+    },
+    {
+      "GID_3": "THA.41.7.2_1",
+      "buildings": 2913,
+      "building_area_m2": 328000
+    },
+    {
+      "GID_3": "THA.41.7.3_1",
+      "buildings": 1972,
+      "building_area_m2": 241557
+    },
+    {
+      "GID_3": "THA.41.7.4_1",
+      "buildings": 2291,
+      "building_area_m2": 249623
+    },
+    {
+      "GID_3": "THA.41.7.5_1",
+      "buildings": 3982,
+      "building_area_m2": 488169
+    },
+    {
+      "GID_3": "THA.41.7.6_1",
+      "buildings": 6855,
+      "building_area_m2": 855530
+    },
+    {
+      "GID_3": "THA.41.8.2_1",
+      "buildings": 3524,
+      "building_area_m2": 389143
+    },
+    {
+      "GID_3": "THA.41.8.3_1",
+      "buildings": 3822,
+      "building_area_m2": 361222
+    },
+    {
+      "GID_3": "THA.41.8.4_1",
+      "buildings": 17661,
+      "building_area_m2": 2095585
+    },
+    {
+      "GID_3": "THA.41.8.5_1",
+      "buildings": 4101,
+      "building_area_m2": 414683
+    },
+    {
+      "GID_3": "THA.41.8.6_1",
+      "buildings": 8504,
+      "building_area_m2": 850541
+    },
+    {
+      "GID_3": "THA.41.8.7_1",
+      "buildings": 16600,
+      "building_area_m2": 1913615
+    },
+    {
+      "GID_3": "THA.41.8.8_1",
+      "buildings": 6548,
+      "building_area_m2": 619947
+    },
+    {
+      "GID_3": "THA.41.8.9_1",
+      "buildings": 18833,
+      "building_area_m2": 2140259
+    },
+    {
+      "GID_3": "THA.41.8.1_1",
+      "buildings": 32428,
+      "building_area_m2": 3482308
+    },
+    {
+      "GID_3": "THA.41.9.1_1",
+      "buildings": 9223,
+      "building_area_m2": 980772
+    },
+    {
+      "GID_3": "THA.41.9.2_1",
+      "buildings": 6258,
+      "building_area_m2": 760441
+    },
+    {
+      "GID_3": "THA.41.9.3_1",
+      "buildings": 7646,
+      "building_area_m2": 819744
+    },
+    {
+      "GID_3": "THA.41.9.4_1",
+      "buildings": 6266,
+      "building_area_m2": 648762
+    },
+    {
+      "GID_3": "THA.41.9.5_1",
+      "buildings": 5107,
+      "building_area_m2": 439908
+    },
+    {
+      "GID_3": "THA.41.9.6_1",
+      "buildings": 5497,
+      "building_area_m2": 605212
+    },
+    {
+      "GID_3": "THA.47.1.1_1",
+      "buildings": 8180,
+      "building_area_m2": 973759
+    },
+    {
+      "GID_3": "THA.47.1.2_1",
+      "buildings": 3639,
+      "building_area_m2": 310537
+    },
+    {
+      "GID_3": "THA.47.1.3_1",
+      "buildings": 6934,
+      "building_area_m2": 800563
+    },
+    {
+      "GID_3": "THA.47.1.4_1",
+      "buildings": 5651,
+      "building_area_m2": 550399
+    },
+    {
+      "GID_3": "THA.47.1.5_1",
+      "buildings": 5583,
+      "building_area_m2": 507245
+    },
+    {
+      "GID_3": "THA.47.2.1_1",
+      "buildings": 5315,
+      "building_area_m2": 521817
+    },
+    {
+      "GID_3": "THA.47.2.2_1",
+      "buildings": 6477,
+      "building_area_m2": 660615
+    },
+    {
+      "GID_3": "THA.47.2.3_1",
+      "buildings": 8442,
+      "building_area_m2": 948355
+    },
+    {
+      "GID_3": "THA.47.2.4_1",
+      "buildings": 2308,
+      "building_area_m2": 275432
+    },
+    {
+      "GID_3": "THA.47.2.5_1",
+      "buildings": 3511,
+      "building_area_m2": 319897
+    },
+    {
+      "GID_3": "THA.47.2.6_1",
+      "buildings": 4086,
+      "building_area_m2": 432564
+    },
+    {
+      "GID_3": "THA.47.2.7_1",
+      "buildings": 6771,
+      "building_area_m2": 617556
+    },
+    {
+      "GID_3": "THA.47.3.1_1",
+      "buildings": 5722,
+      "building_area_m2": 558604
+    },
+    {
+      "GID_3": "THA.47.3.2_1",
+      "buildings": 5721,
+      "building_area_m2": 484591
+    },
+    {
+      "GID_3": "THA.47.3.3_1",
+      "buildings": 35602,
+      "building_area_m2": 3981886
+    },
+    {
+      "GID_3": "THA.47.3.4_1",
+      "buildings": 8367,
+      "building_area_m2": 895707
+    },
+    {
+      "GID_3": "THA.47.3.5_1",
+      "buildings": 13221,
+      "building_area_m2": 1579146
+    },
+    {
+      "GID_3": "THA.47.3.6_1",
+      "buildings": 2423,
+      "building_area_m2": 217507
+    },
+    {
+      "GID_3": "THA.47.3.7_1",
+      "buildings": 4732,
+      "building_area_m2": 422688
+    },
+    {
+      "GID_3": "THA.47.3.8_1",
+      "buildings": 9992,
+      "building_area_m2": 910617
+    },
+    {
+      "GID_3": "THA.47.3.9_1",
+      "buildings": 4498,
+      "building_area_m2": 433055
+    },
+    {
+      "GID_3": "THA.47.3.10_1",
+      "buildings": 2471,
+      "building_area_m2": 265961
+    },
+    {
+      "GID_3": "THA.47.3.11_1",
+      "buildings": 5839,
+      "building_area_m2": 708359
+    },
+    {
+      "GID_3": "THA.47.3.12_1",
+      "buildings": 6585,
+      "building_area_m2": 795713
+    },
+    {
+      "GID_3": "THA.47.3.13_1",
+      "buildings": 2844,
+      "building_area_m2": 252331
+    },
+    {
+      "GID_3": "THA.47.4.1_1",
+      "buildings": 5025,
+      "building_area_m2": 443839
+    },
+    {
+      "GID_3": "THA.47.4.2_1",
+      "buildings": 2748,
+      "building_area_m2": 329835
+    },
+    {
+      "GID_3": "THA.47.4.3_1",
+      "buildings": 4810,
+      "building_area_m2": 488076
+    },
+    {
+      "GID_3": "THA.47.4.4_1",
+      "buildings": 3132,
+      "building_area_m2": 388317
+    },
+    {
+      "GID_3": "THA.47.5.1_1",
+      "buildings": 1001,
+      "building_area_m2": 65241
+    },
+    {
+      "GID_3": "THA.47.5.2_1",
+      "buildings": 2728,
+      "building_area_m2": 237468
+    },
+    {
+      "GID_3": "THA.47.5.3_1",
+      "buildings": 4867,
+      "building_area_m2": 526421
+    },
+    {
+      "GID_3": "THA.47.5.4_1",
+      "buildings": 5869,
+      "building_area_m2": 668529
+    },
+    {
+      "GID_3": "THA.47.5.5_1",
+      "buildings": 4985,
+      "building_area_m2": 434818
+    },
+    {
+      "GID_3": "THA.47.5.6_1",
+      "buildings": 9037,
+      "building_area_m2": 757659
+    },
+    {
+      "GID_3": "THA.47.5.7_1",
+      "buildings": 4128,
+      "building_area_m2": 352789
+    },
+    {
+      "GID_3": "THA.47.5.8_1",
+      "buildings": 6022,
+      "building_area_m2": 605301
+    },
+    {
+      "GID_3": "THA.47.5.9_1",
+      "buildings": 1941,
+      "building_area_m2": 214758
+    },
+    {
+      "GID_3": "THA.47.5.10_1",
+      "buildings": 2846,
+      "building_area_m2": 311242
+    },
+    {
+      "GID_3": "THA.47.6.1_1",
+      "buildings": 7633,
+      "building_area_m2": 934263
+    },
+    {
+      "GID_3": "THA.47.6.2_1",
+      "buildings": 6170,
+      "building_area_m2": 739966
+    },
+    {
+      "GID_3": "THA.47.6.3_1",
+      "buildings": 1949,
+      "building_area_m2": 222373
+    },
+    {
+      "GID_3": "THA.47.6.4_1",
+      "buildings": 4527,
+      "building_area_m2": 549117
+    },
+    {
+      "GID_3": "THA.47.6.5_1",
+      "buildings": 6440,
+      "building_area_m2": 742102
+    },
+    {
+      "GID_3": "THA.47.6.6_1",
+      "buildings": 5621,
+      "building_area_m2": 596858
+    },
+    {
+      "GID_3": "THA.47.6.7_1",
+      "buildings": 5658,
+      "building_area_m2": 554593
+    },
+    {
+      "GID_3": "THA.47.7.1_1",
+      "buildings": 2496,
+      "building_area_m2": 219250
+    },
+    {
+      "GID_3": "THA.47.7.2_1",
+      "buildings": 1429,
+      "building_area_m2": 151903
+    },
+    {
+      "GID_3": "THA.47.7.3_1",
+      "buildings": 3342,
+      "building_area_m2": 325561
+    },
+    {
+      "GID_3": "THA.47.7.4_1",
+      "buildings": 4203,
+      "building_area_m2": 403294
+    },
+    {
+      "GID_3": "THA.47.7.5_1",
+      "buildings": 9783,
+      "building_area_m2": 1176018
+    },
+    {
+      "GID_3": "THA.47.7.6_1",
+      "buildings": 4531,
+      "building_area_m2": 476231
+    },
+    {
+      "GID_3": "THA.47.7.7_1",
+      "buildings": 7339,
+      "building_area_m2": 899390
+    },
+    {
+      "GID_3": "THA.47.7.8_1",
+      "buildings": 6661,
+      "building_area_m2": 597426
+    },
+    {
+      "GID_3": "THA.47.7.9_1",
+      "buildings": 3668,
+      "building_area_m2": 408249
+    },
+    {
+      "GID_3": "THA.47.7.10_1",
+      "buildings": 5773,
+      "building_area_m2": 680072
+    },
+    {
+      "GID_3": "THA.47.7.11_1",
+      "buildings": 8206,
+      "building_area_m2": 888340
+    },
+    {
+      "GID_3": "THA.47.8.1_1",
+      "buildings": 8859,
+      "building_area_m2": 710551
+    },
+    {
+      "GID_3": "THA.47.8.2_1",
+      "buildings": 8872,
+      "building_area_m2": 635396
+    },
+    {
+      "GID_3": "THA.47.8.3_1",
+      "buildings": 6368,
+      "building_area_m2": 652750
+    },
+    {
+      "GID_3": "THA.47.8.4_1",
+      "buildings": 9123,
+      "building_area_m2": 855270
+    },
+    {
+      "GID_3": "THA.47.8.5_1",
+      "buildings": 7423,
+      "building_area_m2": 757658
+    },
+    {
+      "GID_3": "THA.75.1.1_1",
+      "buildings": 4727,
+      "building_area_m2": 408903
+    },
+    {
+      "GID_3": "THA.75.1.2_1",
+      "buildings": 4248,
+      "building_area_m2": 334349
+    },
+    {
+      "GID_3": "THA.75.1.3_1",
+      "buildings": 3526,
+      "building_area_m2": 308652
+    },
+    {
+      "GID_3": "THA.75.1.4_1",
+      "buildings": 3726,
+      "building_area_m2": 287628
+    },
+    {
+      "GID_3": "THA.75.2.1_1",
+      "buildings": 2835,
+      "building_area_m2": 274126
+    },
+    {
+      "GID_3": "THA.75.2.2_1",
+      "buildings": 4691,
+      "building_area_m2": 406549
+    },
+    {
+      "GID_3": "THA.75.2.3_1",
+      "buildings": 2154,
+      "building_area_m2": 211296
+    },
+    {
+      "GID_3": "THA.75.2.4_1",
+      "buildings": 2745,
+      "building_area_m2": 280508
+    },
+    {
+      "GID_3": "THA.75.3.1_1",
+      "buildings": 6289,
+      "building_area_m2": 764913
+    },
+    {
+      "GID_3": "THA.75.3.2_1",
+      "buildings": 2491,
+      "building_area_m2": 309369
+    },
+    {
+      "GID_3": "THA.75.3.3_1",
+      "buildings": 8889,
+      "building_area_m2": 929781
+    },
+    {
+      "GID_3": "THA.75.3.4_1",
+      "buildings": 7940,
+      "building_area_m2": 891108
+    },
+    {
+      "GID_3": "THA.75.3.5_1",
+      "buildings": 2400,
+      "building_area_m2": 265043
+    },
+    {
+      "GID_3": "THA.75.3.6_1",
+      "buildings": 4847,
+      "building_area_m2": 547617
+    },
+    {
+      "GID_3": "THA.75.3.7_1",
+      "buildings": 3174,
+      "building_area_m2": 394213
+    },
+    {
+      "GID_3": "THA.75.3.8_1",
+      "buildings": 9284,
+      "building_area_m2": 1125691
+    },
+    {
+      "GID_3": "THA.75.4.1_1",
+      "buildings": 4537,
+      "building_area_m2": 549480
+    },
+    {
+      "GID_3": "THA.75.4.2_1",
+      "buildings": 6686,
+      "building_area_m2": 700986
+    },
+    {
+      "GID_3": "THA.75.4.3_1",
+      "buildings": 6804,
+      "building_area_m2": 773500
+    },
+    {
+      "GID_3": "THA.75.4.4_1",
+      "buildings": 6491,
+      "building_area_m2": 713317
+    },
+    {
+      "GID_3": "THA.75.4.5_1",
+      "buildings": 4036,
+      "building_area_m2": 492114
+    },
+    {
+      "GID_3": "THA.75.4.6_1",
+      "buildings": 1867,
+      "building_area_m2": 229760
+    },
+    {
+      "GID_3": "THA.75.4.7_1",
+      "buildings": 6791,
+      "building_area_m2": 829298
+    },
+    {
+      "GID_3": "THA.75.4.8_1",
+      "buildings": 7468,
+      "building_area_m2": 728474
+    },
+    {
+      "GID_3": "THA.75.4.9_1",
+      "buildings": 7058,
+      "building_area_m2": 1004971
+    },
+    {
+      "GID_3": "THA.75.4.10_1",
+      "buildings": 8225,
+      "building_area_m2": 1032547
+    },
+    {
+      "GID_3": "THA.75.4.11_1",
+      "buildings": 5951,
+      "building_area_m2": 791590
+    },
+    {
+      "GID_3": "THA.75.4.12_1",
+      "buildings": 1821,
+      "building_area_m2": 205719
+    },
+    {
+      "GID_3": "THA.75.4.13_1",
+      "buildings": 8682,
+      "building_area_m2": 1238846
+    },
+    {
+      "GID_3": "THA.75.4.14_1",
+      "buildings": 23386,
+      "building_area_m2": 3054025
+    },
+    {
+      "GID_3": "THA.75.4.15_1",
+      "buildings": 621,
+      "building_area_m2": 53102
+    },
+    {
+      "GID_3": "THA.75.4.16_1",
+      "buildings": 3929,
+      "building_area_m2": 402972
+    },
+    {
+      "GID_3": "THA.75.4.17_1",
+      "buildings": 8779,
+      "building_area_m2": 981318
+    },
+    {
+      "GID_3": "THA.75.5.1_1",
+      "buildings": 4741,
+      "building_area_m2": 458395
+    },
+    {
+      "GID_3": "THA.75.5.2_1",
+      "buildings": 3757,
+      "building_area_m2": 326995
+    },
+    {
+      "GID_3": "THA.75.5.3_1",
+      "buildings": 2887,
+      "building_area_m2": 252349
+    },
+    {
+      "GID_3": "THA.75.5.4_1",
+      "buildings": 4224,
+      "building_area_m2": 414836
+    },
+    {
+      "GID_3": "THA.75.5.5_1",
+      "buildings": 1975,
+      "building_area_m2": 200428
+    },
+    {
+      "GID_3": "THA.75.5.6_1",
+      "buildings": 4594,
+      "building_area_m2": 594987
+    },
+    {
+      "GID_3": "THA.75.6.1_1",
+      "buildings": 3624,
+      "building_area_m2": 450836
+    },
+    {
+      "GID_3": "THA.75.6.2_1",
+      "buildings": 1384,
+      "building_area_m2": 158158
+    },
+    {
+      "GID_3": "THA.75.6.3_1",
+      "buildings": 3162,
+      "building_area_m2": 361568
+    },
+    {
+      "GID_3": "THA.75.6.4_1",
+      "buildings": 5538,
+      "building_area_m2": 738575
+    },
+    {
+      "GID_3": "THA.75.6.5_1",
+      "buildings": 3858,
+      "building_area_m2": 440820
+    },
+    {
+      "GID_3": "THA.75.6.6_1",
+      "buildings": 7026,
+      "building_area_m2": 750920
+    },
+    {
+      "GID_3": "THA.75.6.7_1",
+      "buildings": 4101,
+      "building_area_m2": 579720
+    },
+    {
+      "GID_3": "THA.75.6.8_1",
+      "buildings": 689,
+      "building_area_m2": 83471
+    },
+    {
+      "GID_3": "THA.75.6.9_1",
+      "buildings": 3766,
+      "building_area_m2": 482649
+    },
+    {
+      "GID_3": "THA.75.6.10_1",
+      "buildings": 3723,
+      "building_area_m2": 441358
+    },
+    {
+      "GID_3": "THA.75.6.11_1",
+      "buildings": 4110,
+      "building_area_m2": 572457
+    },
+    {
+      "GID_3": "THA.75.7.1_1",
+      "buildings": 7533,
+      "building_area_m2": 775013
+    },
+    {
+      "GID_3": "THA.75.7.2_1",
+      "buildings": 3305,
+      "building_area_m2": 361356
+    },
+    {
+      "GID_3": "THA.75.7.3_1",
+      "buildings": 5452,
+      "building_area_m2": 527415
+    },
+    {
+      "GID_3": "THA.75.7.4_1",
+      "buildings": 2403,
+      "building_area_m2": 191816
+    },
+    {
+      "GID_3": "THA.75.7.5_1",
+      "buildings": 5763,
+      "building_area_m2": 579896
+    },
+    {
+      "GID_3": "THA.75.7.6_1",
+      "buildings": 4056,
+      "building_area_m2": 475950
+    },
+    {
+      "GID_3": "THA.75.7.7_1",
+      "buildings": 2386,
+      "building_area_m2": 246789
+    },
+    {
+      "GID_3": "THA.75.7.8_1",
+      "buildings": 4946,
+      "building_area_m2": 500978
+    },
+    {
+      "GID_3": "THA.75.8.1_1",
+      "buildings": 9910,
+      "building_area_m2": 1060768
+    },
+    {
+      "GID_3": "THA.75.8.2_1",
+      "buildings": 6145,
+      "building_area_m2": 647423
+    },
+    {
+      "GID_3": "THA.75.8.3_1",
+      "buildings": 6328,
+      "building_area_m2": 709593
+    },
+    {
+      "GID_3": "THA.75.8.4_1",
+      "buildings": 7005,
+      "building_area_m2": 657915
+    },
+    {
+      "GID_3": "THA.75.9.1_1",
+      "buildings": 4445,
+      "building_area_m2": 659119
+    },
+    {
+      "GID_3": "THA.75.9.2_1",
+      "buildings": 2435,
+      "building_area_m2": 309420
+    },
+    {
+      "GID_3": "THA.75.9.3_1",
+      "buildings": 2646,
+      "building_area_m2": 301386
+    },
+    {
+      "GID_3": "THA.75.9.4_1",
+      "buildings": 6333,
+      "building_area_m2": 711966
+    },
+    {
+      "GID_3": "THA.75.9.5_1",
+      "buildings": 7924,
+      "building_area_m2": 976425
+    }
+  ]
+}

@@ -230,10 +230,11 @@ function renderGridToDataURL(
   return canvas.toDataURL();
 }
 
-function scoreOfRow(row: TambonRow, mode: LayerMode): number {
+function scoreOfRow(row: TambonRow, mode: LayerMode | null): number {
   if (mode === "wetness") return row.wetnessNorm;
-  if (mode === "live") return row.liveNorm;
-  return row.staticNorm;
+  if (mode === "static") return row.staticNorm;
+  // Default & live both rank by liveNorm — that's the operational ranking.
+  return row.liveNorm;
 }
 
 // ─── Inline glyph for tier badge (visual is an inset !/·/✓) ─────
@@ -274,10 +275,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
 
-  const [layerMode, setLayerMode] = useState<LayerMode>("live");
+  // null = no hazard layer shown (basemap visible). Click an active mode
+  // again to toggle it off.
+  const [layerMode, setLayerMode] = useState<LayerMode | null>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
-  const [basemap, setBasemap] = useState<Basemap>("osm");
+  const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -865,11 +868,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
             const meta = layerModes[m];
             const Icon = m === "live" ? AlertTriangle : m === "wetness" ? Droplets : Mountain;
+            const isActive = m === layerMode;
             return (
               <button
                 key={m}
-                className={`mode-item ${m === layerMode ? "active" : ""}`}
-                onClick={() => setLayerMode(m)}
+                className={`mode-item ${isActive ? "active" : ""}`}
+                onClick={() => setLayerMode(isActive ? null : m)}
+                title={isActive ? "คลิกอีกครั้งเพื่อปิดเลเยอร์" : meta.description}
               >
                 <span className="mi-glyph">
                   <Icon size={20} strokeWidth={2} />
@@ -877,6 +882,32 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span className="mi-label">{meta.label}</span>
                   <span className="mi-desc">{meta.description}</span>
+                </span>
+                <span
+                  className="mi-sw"
+                  aria-hidden
+                  style={{
+                    width: 28,
+                    height: 16,
+                    borderRadius: 999,
+                    background: isActive ? "var(--accent)" : "rgba(120,200,200,0.18)",
+                    position: "relative",
+                    flex: "none",
+                    transition: "background 0.15s",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 2,
+                      left: isActive ? 14 : 2,
+                      width: 12,
+                      height: 12,
+                      borderRadius: "50%",
+                      background: isActive ? "var(--bg)" : "var(--ink-2)",
+                      transition: "left 0.15s, background 0.15s",
+                    }}
+                  />
                 </span>
               </button>
             );
@@ -1027,18 +1058,19 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         <div className="glass" style={{ display: "flex", padding: 4 }}>
           {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
             const meta = layerModes[m];
+            const isActive = m === layerMode;
             return (
               <button
                 key={m}
-                className={`mode-item ${m === layerMode ? "active" : ""}`}
+                className={`mode-item ${isActive ? "active" : ""}`}
                 style={{
                   flex: 1,
                   justifyContent: "center",
                   padding: "8px 4px",
                   fontSize: 12,
-                  color: m === layerMode ? "var(--ink)" : "var(--ink-3)",
+                  color: isActive ? "var(--ink)" : "var(--ink-3)",
                 }}
-                onClick={() => setLayerMode(m)}
+                onClick={() => setLayerMode(isActive ? null : m)}
               >
                 <span className="mi-label" style={{ fontSize: 12 }}>
                   {meta.label}

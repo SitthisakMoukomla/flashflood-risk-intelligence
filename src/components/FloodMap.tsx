@@ -292,16 +292,26 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const row = gid ? rowByGid.get(gid) : undefined;
         if (!row) return {};
         const isSelected = row.feature.properties.GID_3 === selectedGid;
-        // In static and wetness modes the underlying raster carries the colour —
-        // tambon polygons are just outlines that stay clickable for the detail panel.
-        // Live mode keeps polygons coloured because that's the village-ranking view.
+        // In static and wetness modes the underlying raster carries the colour.
+        // 663 tambon outlines drawn at once turn into visual hash, so polygons
+        // stay invisible until the user hovers or selects one — the layer is
+        // still in the DOM so click hit-testing works.
         if (layerMode === "static" || layerMode === "wetness") {
+          if (isSelected) {
+            return {
+              fillOpacity: 0.18,
+              fillColor: "#ffffff",
+              color: "#ffffff",
+              weight: 2.5,
+              opacity: 0.95,
+            };
+          }
           return {
-            fillOpacity: isSelected ? 0.18 : 0,
-            fillColor: isSelected ? "#ffffff" : undefined,
-            color: isSelected ? "#ffffff" : "rgba(255,255,255,0.16)",
-            weight: isSelected ? 2.5 : 0.4,
-            opacity: 0.9,
+            fillOpacity: 0,
+            fillColor: "transparent",
+            color: "transparent",
+            weight: 0,
+            opacity: 0,
           };
         }
         return {
@@ -317,6 +327,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const row = gid ? rowByGid.get(gid) : undefined;
         if (!row) return;
         const p = row.feature.properties;
+        const pathLayer = layer as Leaflet.Path & { feature?: { properties?: { GID_3?: string } } };
         layer.on("click", () => {
           setSelectedGid(p.GID_3);
           map.flyTo(
@@ -324,6 +335,22 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             Math.max(map.getZoom(), 9),
             { duration: 0.6 },
           );
+        });
+        // Hover highlight — only meaningful in modes where polygons are otherwise hidden.
+        layer.on("mouseover", () => {
+          if (layerMode !== "static" && layerMode !== "wetness") return;
+          if (pathLayer.feature?.properties?.GID_3 === selectedGid) return;
+          pathLayer.setStyle({
+            color: "rgba(255,255,255,0.65)",
+            weight: 1.2,
+            opacity: 1,
+            fillOpacity: 0.05,
+            fillColor: "#ffffff",
+          });
+        });
+        layer.on("mouseout", () => {
+          if (pathLayer.feature?.properties?.GID_3 === selectedGid) return;
+          polyLayerRef.current?.resetStyle(layer as Leaflet.Path);
         });
         const tooltip = `<b>${p.NAME_3}</b> · ${p.NAME_2}<br/>${thaiName(p.NAME_1)}`;
         layer.bindTooltip(tooltip, { direction: "top", sticky: true, opacity: 0.9 });

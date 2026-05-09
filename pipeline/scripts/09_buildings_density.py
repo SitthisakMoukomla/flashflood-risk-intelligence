@@ -29,12 +29,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import click
+import geopandas as gpd
 import numpy as np
+from affine import Affine
 from PIL import Image
+from rasterio.features import rasterize
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BBOX_PATH = REPO_ROOT / "data" / "aoi" / "aoi_bbox.json"
+AOI_PATH = REPO_ROOT / "data" / "aoi" / "aoi_north_thailand.geojson"
 BUILD_DIR = REPO_ROOT / "data" / "buildings"
 PUBLIC_DATA = REPO_ROOT.parent / "public" / "data"
 PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
@@ -112,6 +116,32 @@ def main(step: float, ramp: str) -> None:
 
     click.echo(f"[total] {total:,} buildings; non-zero cells {(counts>0).sum():,}/{counts.size:,}")
 
+    # Rasterize the dissolved 9-province AOI polygon to the same grid so we
+    # can mask buildings that landed in Myanmar / Laos slivers of the bbox.
+    if AOI_PATH.exists():
+        click.echo(f"[mask] rasterising {AOI_PATH.name} to {ny}x{nx} grid")
+        aoi = gpd.read_file(AOI_PATH).to_crs("EPSG:4326")
+        # Origin at top-left (north_lat=miny+ny*step, west_lon=minx); pixel size = step.
+        north_lat = miny + ny * step
+        transform = Affine(step, 0, minx, 0, -step, north_lat)
+        aoi_mask = rasterize(
+            ((g, 1) for g in aoi.geometry),
+            out_shape=(ny, nx),
+            transform=transform,
+            fill=0,
+            dtype=np.uint8,
+        )
+        before = int((counts > 0).sum())
+        counts = np.where(aoi_mask > 0, counts, 0)
+        after = int((counts > 0).sum())
+        click.echo(
+            f"[mask] dropped {before - after:,} buildings outside AOI "
+            f"({100 * (before - after) / max(before, 1):.1f}%); kept {after:,}"
+        )
+    else:
+        aoi_mask = np.ones((ny, nx), dtype=np.uint8)
+        click.echo("[mask] AOI geojson missing — skipping clip")
+
     # Log-scale normalisation: density spans many orders of magnitude.
     log_counts = np.log1p(counts.astype(np.float32))
     p5 = float(np.quantile(log_counts[counts > 0], 0.05)) if (counts > 0).any() else 0.0
@@ -147,8 +177,12 @@ def main(step: float, ramp: str) -> None:
             rgb[..., ch] = np.where(m, c0[ch] + f * (c1[ch] - c0[ch]), rgb[..., ch])
     rgb = np.clip(rgb, 0, 255).astype(np.uint8)
 
-    # Alpha: hide empty cells; ramp up with density. Use sqrt for smoother edges.
-    alpha = np.where(counts > 0, np.clip(80 + 175 * np.sqrt(t), 0, 255), 0).astype(np.uint8)
+    # Alpha: hide empty cells AND cells outside AOI; ramp up with density.
+    alpha = np.where(
+        (counts > 0) & (aoi_mask > 0),
+        np.clip(80 + 175 * np.sqrt(t), 0, 255),
+        0,
+    ).astype(np.uint8)
 
     rgba = np.dstack([rgb, alpha])
     Image.fromarray(rgba, "RGBA").save(PNG_OUT, optimize=True)

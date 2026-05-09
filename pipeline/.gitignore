@@ -12,7 +12,7 @@ data/dem/
 data/burn/
 data/buildings/
 data/output/
-data/aoi/gadm41_THA_1.json.zip
+data/aoi/gadm41_THA_*.json.zip
 
 # Pipeline outputs to keep small/checked-in:
 # - data/aoi/aoi_north_thailand.geojson

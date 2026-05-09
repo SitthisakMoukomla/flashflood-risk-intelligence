@@ -1131,12 +1131,20 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         </button>
       </div>
 
-      {/* Mobile floating mode picker (compact) */}
+      {/* Mobile mode picker — sits directly below the hero so it's always
+          visible even when the bottom-sheet drawer is open (drawer z=30
+          covered the old bottom-positioned picker). */}
       <div
         className="mobile-only"
-        style={{ position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 17, display: "flex", flexDirection: "column", gap: 8 }}
+        style={{
+          position: "absolute",
+          left: 8,
+          right: 8,
+          top: 78,
+          zIndex: 23,
+        }}
       >
-        <div className="glass" style={{ display: "flex", padding: 4 }}>
+        <div className="glass" style={{ display: "flex", padding: 3, gap: 2 }}>
           {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
             const meta = layerModes[m];
             const isActive = m === layerMode;
@@ -1147,9 +1155,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                 style={{
                   flex: 1,
                   justifyContent: "center",
-                  padding: "8px 4px",
+                  padding: "7px 4px",
                   fontSize: 12,
                   color: isActive ? "var(--ink)" : "var(--ink-3)",
+                  borderRadius: 7,
                 }}
                 onClick={() => setLayerMode(isActive ? null : m)}
               >
@@ -1159,6 +1168,21 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               </button>
             );
           })}
+          <button
+            className="mode-item"
+            style={{
+              padding: "7px 10px",
+              fontSize: 12,
+              color: layerMode === null ? "var(--accent)" : "var(--ink-3)",
+              borderRadius: 7,
+              background: layerMode === null ? "rgba(64,224,189,0.14)" : "transparent",
+            }}
+            onClick={() => setLayerMode(null)}
+            title="ปิดทุกเลเยอร์ความเสี่ยง"
+            aria-label="ปิดเลเยอร์"
+          >
+            <X size={14} />
+          </button>
         </div>
       </div>
     </div>

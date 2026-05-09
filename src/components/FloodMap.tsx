@@ -558,6 +558,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const isSelected = gid === selectedGid;
         if (isSelected) {
           return {
+            stroke: true,
+            fill: true,
             fillOpacity: 0.16,
             fillColor: "#ffffff",
             color: "#ffffff",
@@ -565,19 +567,20 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             opacity: 0.95,
           };
         }
-        // Tier-coloured outlines — severe/high/watch get a thin glowing
-        // border so the user can see priority tambon even with all hazard
-        // rasters turned off. Low-tier polygons stay invisible to keep
-        // the map readable.
+        // Tier-coloured outlines so the user can see priority tambon
+        // even with every hazard raster turned off. Low-tier polygons
+        // are fully invisible (no stroke, no fill) — explicit stroke:
+        // false because canvas rendering doesn't always honour weight: 0.
         const row = gid ? rowByGid.get(gid) : undefined;
         const tier = row?.liveTier ?? "low";
         if (tier === "low") {
-          return { fillOpacity: 0, color: "transparent", weight: 0, opacity: 0 };
+          return { stroke: false, fill: false };
         }
         const color = riskMeta[tier].color;
         const weight = tier === "severe" ? 1.6 : tier === "high" ? 1.2 : 0.9;
         return {
-          fillOpacity: 0,
+          stroke: true,
+          fill: false,
           color,
           weight,
           opacity: tier === "severe" ? 0.95 : tier === "high" ? 0.85 : 0.7,
@@ -592,12 +595,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         });
         layer.on("mouseover", () => {
           if (path.feature?.properties?.GID_3 === selectedGid) return;
+          const gid = path.feature?.properties?.GID_3;
+          const r = gid ? rowByGid.get(gid) : undefined;
+          const isLow = !r || r.liveTier === "low";
           path.setStyle({
-            color: "rgba(255,255,255,0.55)",
-            weight: 1,
+            stroke: true,
+            fill: false,
+            color: isLow ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.75)",
+            weight: isLow ? 0.8 : 1.4,
             opacity: 1,
-            fillOpacity: 0.04,
-            fillColor: "#ffffff",
           });
         });
         layer.on("mouseout", () => {

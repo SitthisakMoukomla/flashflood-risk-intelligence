@@ -1,20 +1,24 @@
-"""Phase 1.10 — Per-tambon building centroids for the zoom-in vector layer.
+"""Phase 1.10 — Per-tambon building FOOTPRINTS for the zoom-in vector layer.
 
 The 1 km density PNG (script 09) is a fine overview but turns into a blurry
 blob once the user zooms past z=12. This pipeline extracts every Open
-Buildings v3 centroid that falls inside each of the 663 northern tambon and
-writes a tiny per-tambon JSON. The frontend fetches one tambon's points on
-demand when the user selects it and zoom ≥ 12 — only ~50 KB for an urban
-tambon, < 5 KB for rural ones.
+Buildings v3 polygon that falls inside each of the 663 northern tambon and
+writes a tiny per-tambon JSON containing actual building footprints.
 
 Output:
-  public/data/buildings_pts/{GID_3}.json  (Float32 lat/lon pairs as JSON arrays)
+  public/data/buildings_pts/{GID_3}.json
+    [
+      [[lng, lat], [lng, lat], ...],   // polygon 1 (3-8 vertices typical)
+      [[lng, lat], ...],               // polygon 2
+      ...
+    ]
   public/data/buildings_pts/index.json    (per-tambon counts + file size)
 
 Format trade-offs:
-  - JSON of [[lat, lon], ...] rounded to 5 decimals (~1 m precision).
-  - Each entry ~24 bytes, gzip ~9 bytes per building.
-  - Per tambon: ~10 KB to ~120 KB. Total directory ~25-40 MB.
+  - Compact array of [lng, lat] arrays (no Feature wrapping) — ~50% smaller
+    than full GeoJSON FeatureCollection.
+  - 6-decimal precision (~10 cm) — well below building dimensions.
+  - Per tambon: ~30 KB to ~1 MB. Total directory ~150 MB.
 
 Run:
   uv run python scripts/10_buildings_per_tambon_points.py
@@ -32,6 +36,7 @@ from pathlib import Path
 import click
 import geopandas as gpd
 import numpy as np
+from shapely import wkt
 from shapely.geometry import Point
 from shapely.strtree import STRtree
 from tqdm import tqdm
@@ -44,7 +49,8 @@ PUBLIC_PTS = REPO_ROOT.parent / "public" / "data" / "buildings_pts"
 PUBLIC_PTS.mkdir(parents=True, exist_ok=True)
 INDEX_OUT = PUBLIC_PTS / "index.json"
 
-MIN_CONF = 0.70
+MIN_CONF = 0.80
+MIN_AREA_M2 = 20.0  # drop tiny shed-sized polygons that turn into 1-pixel noise
 
 
 def stream_assign(
@@ -52,10 +58,10 @@ def stream_assign(
     bbox: tuple[float, float, float, float],
     polys: list,
     tree: STRtree,
-    per_tambon: list[list[tuple[float, float]]],
+    per_tambon: list[list[list[tuple[float, float]]]],
 ) -> tuple[int, int]:
-    """Stream a single Open Buildings cell and bucket each centroid into the
-    enclosing tambon."""
+    """Stream a single Open Buildings cell and bucket each polygon footprint
+    into the enclosing tambon (using its centroid for the spatial join)."""
     minx, miny, maxx, maxy = bbox
     n_in = 0
     n_assigned = 0
@@ -65,25 +71,55 @@ def stream_assign(
         i_lat = header.index("latitude")
         i_lon = header.index("longitude")
         i_conf = header.index("confidence")
+        i_geom = header.index("geometry")
+        i_area = header.index("area_in_meters")
         bar = tqdm(reader, desc=gz_path.stem[:8], unit_scale=True, smoothing=0.05)
         for row in bar:
             try:
                 lat = float(row[i_lat])
                 lon = float(row[i_lon])
                 conf = float(row[i_conf])
+                area = float(row[i_area])
             except (ValueError, IndexError):
                 continue
             if conf < MIN_CONF:
+                continue
+            if area < MIN_AREA_M2:
                 continue
             if not (miny <= lat <= maxy and minx <= lon <= maxx):
                 continue
             n_in += 1
             pt = Point(lon, lat)
+            tambon_idx = -1
             for idx in tree.query(pt):
                 if polys[idx].contains(pt):
-                    per_tambon[idx].append((round(lat, 5), round(lon, 5)))
-                    n_assigned += 1
+                    tambon_idx = int(idx)
                     break
+            if tambon_idx < 0:
+                continue
+            try:
+                shape = wkt.loads(row[i_geom])
+                # Open Buildings polygons are simple POLYGON (no holes).
+                ring = list(shape.exterior.coords)
+                # Drop the closing duplicate vertex; round to 6 decimals.
+                # 5 decimals = ~1 m precision; visually identical to 6 at z<=18.
+                ring_compact = [
+                    [round(x, 5), round(y, 5)] for x, y in ring[:-1]
+                ]
+                per_tambon[tambon_idx].append(ring_compact)
+                n_assigned += 1
+            except Exception:
+                # Bad WKT — fall back to a tiny square around the centroid.
+                d = 0.00005  # ~5 m
+                per_tambon[tambon_idx].append(
+                    [
+                        [round(lon - d, 5), round(lat - d, 5)],
+                        [round(lon + d, 5), round(lat - d, 5)],
+                        [round(lon + d, 5), round(lat + d, 5)],
+                        [round(lon - d, 5), round(lat + d, 5)],
+                    ]
+                )
+                n_assigned += 1
     return n_in, n_assigned
 
 

@@ -738,20 +738,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
     let cancelled = false;
     const cache = buildingsPtsCacheRef.current;
-    const draw = (pts: [number, number][]) => {
+    const draw = (polygons: [number, number][][]) => {
       if (cancelled) return;
       clear();
-      if (pts.length === 0) return;
+      if (polygons.length === 0) return;
       const group = L.layerGroup();
-      // Smaller radius at lower zoom so dense areas don't smear into one blob.
-      const radius = Math.max(1.2, 0.5 + (zoom - VECTOR_BUILDING_ZOOM) * 0.6);
-      for (const [lat, lon] of pts) {
-        L.circleMarker([lat, lon], {
-          radius,
-          color: "#fdae61",
-          weight: 0,
+      // Stroke and fill scale gently with zoom. Even at z=12 each footprint
+      // is 4-8 px across at our latitudes, so we lean on a translucent fill
+      // and a thin contrasty outline.
+      const stroke = zoom >= 16 ? 0.7 : 0.4;
+      for (const ring of polygons) {
+        // ring is [[lng, lat], ...] — Leaflet wants [[lat, lng], ...]
+        const latlngs = ring.map(([lng, lat]) => [lat, lng] as [number, number]);
+        L.polygon(latlngs, {
+          color: "#0a1318",
+          weight: stroke,
           fillColor: "#fdae61",
-          fillOpacity: 0.85,
+          fillOpacity: 0.78,
           interactive: false,
         }).addTo(group);
       }
@@ -761,13 +764,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
     const cached = cache.get(selectedGid);
     if (cached) {
-      draw(cached);
+      draw(cached as unknown as [number, number][][]);
     } else {
       fetch(`/data/buildings_pts/${selectedGid}.json`)
-        .then((r) => (r.ok ? (r.json() as Promise<[number, number][]>) : Promise.resolve([])))
-        .then((pts) => {
-          cache.set(selectedGid, pts);
-          draw(pts);
+        .then((r) =>
+          r.ok ? (r.json() as Promise<[number, number][][]>) : Promise.resolve([]),
+        )
+        .then((polys) => {
+          cache.set(selectedGid, polys as unknown as [number, number][]);
+          draw(polys);
         })
         .catch(() => {
           /* silent — fall back to density blob */

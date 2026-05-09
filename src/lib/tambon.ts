@@ -57,9 +57,32 @@ export type WetnessGrid = {
   step_deg: number;
   wetness_norm_cap_mm: number;
   precip_now_norm_cap_mm_per_hr: number;
+  static_norm_low?: number;
+  static_norm_high?: number;
   rain_7d_mm: number[];
   precip_now_mm_per_hr: number[];
+  /** Per-cell static hazard (0..1). Filled in by 06_wetness_grid.py
+   *  by sampling the GEE susceptibility raster. */
+  static_norm?: number[];
 };
+
+/** Compute the per-cell live risk array from a wetness grid. */
+export function computeLiveGrid(grid: WetnessGrid): Float32Array {
+  const n = grid.rows * grid.cols;
+  const out = new Float32Array(n);
+  const wcap = grid.wetness_norm_cap_mm;
+  const pcap = grid.precip_now_norm_cap_mm_per_hr;
+  const staticArr = grid.static_norm ?? new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const wet = Math.min(1, (grid.rain_7d_mm[i] ?? 0) / wcap);
+    const pre = Math.min(1, (grid.precip_now_mm_per_hr[i] ?? 0) / pcap);
+    const s = staticArr[i] ?? 0;
+    const base = s * (0.4 + 0.6 * wet);
+    const kick = pre * (0.3 + 0.4 * wet);
+    out[i] = Math.min(1, base + kick);
+  }
+  return out;
+}
 
 /** RGBA color for wetness 0..1: light → deep blue. */
 export function wetnessRampRGBA(t: number): [number, number, number, number] {
@@ -83,20 +106,23 @@ export function precipRampRGBA(t: number): [number, number, number, number] {
   return [r, g, b, a];
 }
 
-export type LayerMode = "static" | "wetness" | "live";
+export type LayerMode = "live" | "static" | "wetness";
 
-export const layerModes: Record<LayerMode, { label: string; description: string }> = {
+export const layerModes: Record<LayerMode, { label: string; sublabel: string; description: string }> = {
+  live: {
+    label: "เตือนภัยตอนนี้",
+    sublabel: "Risk now",
+    description: "ความเสี่ยงน้ำป่าตอนนี้ — รวมพื้นที่เสี่ยง + ดินอิ่มน้ำ + ฝนตอนนี้",
+  },
   static: {
-    label: "Static hazard",
-    description: "ความเสี่ยงเชิงพื้นที่จาก slope + TWI + burn (ก่อนใส่ฝน)",
+    label: "พื้นที่เสี่ยง",
+    sublabel: "Terrain",
+    description: "ที่ดินที่น้ำป่ามักไหลผ่าน — ภูเขาชัน ลำห้วยลงเร็ว ก่อนเอาฝนเข้ามาคำนวณ",
   },
   wetness: {
     label: "ดินอิ่มน้ำ",
-    description: "ฝนสะสม 7 วันหลังนี้ (Open-Meteo) เป็น proxy ของ soil moisture",
-  },
-  live: {
-    label: "Risk live",
-    description: "static × (0.4 + 0.6 × max(wetness, radar)) — เสี่ยงตอนนี้จริง",
+    sublabel: "Soil moisture",
+    description: "ฝนสะสม 7 วันหลังนี้ — ดินอิ่มเท่าไหร่ ฝนรอบใหม่ก็ไหลบ่าเร็ว",
   },
 };
 

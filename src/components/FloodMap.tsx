@@ -22,9 +22,10 @@ import {
 } from "@/lib/risk-intelligence";
 import {
   buildTambonRows,
-  colorForRow,
+  computeLiveGrid,
   layerModes,
   precipRampRGBA,
+  riskRampColor,
   wetnessRampRGBA,
   type LayerMode,
   type TambonCollection,
@@ -93,6 +94,49 @@ function scoreOfRow(row: TambonRow, mode: LayerMode): number {
   return row.staticNorm;
 }
 
+function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): boolean {
+  const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  for (const poly of polys) {
+    if (!pointInRing(lng, lat, poly[0])) continue;
+    let inHole = false;
+    for (let i = 1; i < poly.length; i++) {
+      if (pointInRing(lng, lat, poly[i])) {
+        inHole = true;
+        break;
+      }
+    }
+    if (!inHole) return true;
+  }
+  return false;
+}
+
+function tierActionTH(tier: "severe" | "high" | "watch" | "low"): string {
+  switch (tier) {
+    case "severe":
+      return "เตรียมย้ายของขึ้นที่สูง พร้อมอพยพได้ทันทีถ้าฝนยังหนัก";
+    case "high":
+      return "ติดตามฝนต้นน้ำใกล้ชิด เตรียมแผนสำรอง";
+    case "watch":
+      return "ระวังเมื่อฝนหนักต่อเนื่อง 1-3 ชั่วโมง";
+    case "low":
+      return "ความเสี่ยงต่ำในชั้นข้อมูลปัจจุบัน";
+  }
+}
+
 /** Render a flat grid of values to a data URL. Returns null if no map context. */
 function renderGridToDataURL(
   cols: number,
@@ -130,15 +174,19 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const precipOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [staticMeta, setStaticMeta] = useState<StaticOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
-  const [layerMode, setLayerMode] = useState<LayerMode>("static");
+  const [layerMode, setLayerMode] = useState<LayerMode>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showPrecipOverlay, setShowPrecipOverlay] = useState(false);
+
+  const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
+  const [geoStatus, setGeoStatus] = useState<"idle" | "asking" | "granted" | "denied" | "unsupported" | "outside">("idle");
   const [provinceFilter, setProvinceFilter] = useState<string>("");
   const [query, setQuery] = useState("");
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
@@ -190,6 +238,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     };
   }, []);
 
+  // 1b) Geolocation on first mount
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoStatus("unsupported");
+      return;
+    }
+    setGeoStatus("asking");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLoc([pos.coords.longitude, pos.coords.latitude]);
+        setGeoStatus("granted");
+      },
+      () => setGeoStatus("denied"),
+      { enableHighAccuracy: false, maximumAge: 5 * 60_000, timeout: 10_000 },
+    );
+  }, []);
+
   // 2) Build rows from data
   const rows = useMemo(
     () => (tambonFC ? buildTambonRows(tambonFC, wetness, grid) : []),
@@ -223,6 +288,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (!selectedGid) return sortedRows[0] ?? null;
     return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? sortedRows[0] ?? null;
   }, [rows, sortedRows, selectedGid]);
+
+  // Find which tambon contains the user's location.
+  const userRow = useMemo(() => {
+    if (!userLoc || rows.length === 0) return null;
+    const [lng, lat] = userLoc;
+    for (const row of rows) {
+      if (pointInGeom(lng, lat, row.feature.geometry)) return row;
+    }
+    return null;
+  }, [userLoc, rows]);
+
+  // Update geo status if user is outside the AOI.
+  useEffect(() => {
+    if (geoStatus === "granted" && userLoc && rows.length > 0 && !userRow) {
+      setGeoStatus("outside");
+    }
+  }, [geoStatus, userLoc, rows.length, userRow]);
 
   const totals = useMemo(() => {
     let severe = 0;
@@ -292,34 +374,25 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const row = gid ? rowByGid.get(gid) : undefined;
         if (!row) return {};
         const isSelected = row.feature.properties.GID_3 === selectedGid;
-        // In static and wetness modes the underlying raster carries the colour.
-        // 663 tambon outlines drawn at once turn into visual hash, so polygons
-        // stay invisible until the user hovers or selects one — the layer is
-        // still in the DOM so click hit-testing works.
-        if (layerMode === "static" || layerMode === "wetness") {
-          if (isSelected) {
-            return {
-              fillOpacity: 0.18,
-              fillColor: "#ffffff",
-              color: "#ffffff",
-              weight: 2.5,
-              opacity: 0.95,
-            };
-          }
+        // All three modes use raster overlays. Polygons stay invisible by
+        // default and only appear when the user hovers or selects one — they
+        // still receive click events because Leaflet canvas hit-tests by
+        // geometry, not painted pixels.
+        if (isSelected) {
           return {
-            fillOpacity: 0,
-            fillColor: "transparent",
-            color: "transparent",
-            weight: 0,
-            opacity: 0,
+            fillOpacity: 0.18,
+            fillColor: "#ffffff",
+            color: "#ffffff",
+            weight: 2.5,
+            opacity: 0.95,
           };
         }
         return {
-          fillColor: colorForRow(row, layerMode),
-          color: isSelected ? "#ffffff" : "#1d2f33",
-          weight: isSelected ? 2.5 : 0.6,
-          fillOpacity: 0.6,
-          opacity: 0.85,
+          fillOpacity: 0,
+          fillColor: "transparent",
+          color: "transparent",
+          weight: 0,
+          opacity: 0,
         };
       },
       onEachFeature: (feature, layer) => {
@@ -336,9 +409,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             { duration: 0.6 },
           );
         });
-        // Hover highlight — only meaningful in modes where polygons are otherwise hidden.
+        // Hover highlight — polygons are hidden in every mode now, so always
+        // light up the boundary on mouseover for orientation.
         layer.on("mouseover", () => {
-          if (layerMode !== "static" && layerMode !== "wetness") return;
           if (pathLayer.feature?.properties?.GID_3 === selectedGid) return;
           pathLayer.setStyle({
             color: "rgba(255,255,255,0.65)",
@@ -421,6 +494,41 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       interactive: false,
       // CSS image-rendering: auto allows browser bilinear smoothing when scaled.
       className: "wetness-overlay",
+    }).addTo(map);
+  }, [isMapReady, layerMode, grid]);
+
+  // 6c) Live combined risk raster (computed per-cell from grid + susceptibility)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (liveOverlayRef.current) {
+      liveOverlayRef.current.removeFrom(map);
+      liveOverlayRef.current = null;
+    }
+    if (layerMode !== "live" || !grid) return;
+    const live = computeLiveGrid(grid);
+    const url = renderGridToDataURL(
+      grid.cols,
+      grid.rows,
+      Array.from(live),
+      1.0,
+      (t) => {
+        const c = riskRampColor(t);
+        // riskRampColor returns "rgb(r,g,b)" — parse and add alpha
+        const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
+        if (!m) return [0, 0, 0, 0];
+        const [r, g, b] = [+m[1], +m[2], +m[3]];
+        const a = Math.round(Math.min(220, 80 + 200 * t));
+        return [r, g, b, a];
+      },
+    );
+    if (!url) return;
+    const [w, s, e, n] = grid.grid_bbox;
+    liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
+      opacity: 0.78,
+      interactive: false,
+      className: "live-overlay",
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
@@ -559,12 +667,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             <div>
               <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[#9fb7b3]">
                 <Layers size={14} />
-                Layer
+                เลือกมุมมอง
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {(["static", "wetness", "live"] as LayerMode[]).map((mode) => {
+                {(["live", "static", "wetness"] as LayerMode[]).map((mode) => {
                   const meta = layerModes[mode];
-                  const Icon = mode === "wetness" ? Droplets : mode === "live" ? Radar : Mountain;
+                  const Icon = mode === "wetness" ? Droplets : mode === "live" ? AlertTriangle : Mountain;
                   return (
                     <button
                       key={mode}
@@ -664,7 +772,28 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             <div className="absolute inset-x-0 top-0 z-10 m-4 rounded-lg border border-[#ff6b6b]/40 bg-[#220a0a]/95 p-3 text-sm text-[#ffd9d9]">
               โหลดข้อมูลไม่สำเร็จ: {loadError}
             </div>
-          ) : null}
+          ) : (
+            <HeroAlert
+              row={userRow}
+              status={geoStatus}
+              onLocate={() => {
+                if (!userRow) return;
+                const map = mapRef.current;
+                if (!map) return;
+                const layer = polyLayerRef.current;
+                if (layer) {
+                  layer.eachLayer((l) => {
+                    const fid = (l as unknown as { feature?: { properties?: { GID_3?: string } } })
+                      .feature?.properties?.GID_3;
+                    if (fid === userRow.feature.properties.GID_3) {
+                      map.flyTo((l as Leaflet.GeoJSON).getBounds().getCenter(), 11, { duration: 0.7 });
+                      setSelectedGid(fid ?? null);
+                    }
+                  });
+                }
+              }}
+            />
+          )}
           <div className="floating-status">
             <div className="flex min-w-0 items-center gap-3">
               <div
@@ -703,6 +832,75 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         </aside>
       </div>
     </section>
+  );
+}
+
+function HeroAlert({
+  row,
+  status,
+  onLocate,
+}: {
+  row: TambonRow | null;
+  status: "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
+  onLocate: () => void;
+}) {
+  if (status === "asking" || status === "idle") return null;
+  if (status === "denied" || status === "unsupported" || status === "outside" || !row) {
+    const msg =
+      status === "denied"
+        ? "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง — เลือกตำบลของคุณจากรายการทางซ้าย"
+        : status === "unsupported"
+          ? "เบราว์เซอร์ไม่รองรับการระบุตำแหน่ง — เลือกตำบลของคุณจากรายการทางซ้าย"
+          : "คุณอยู่นอกเขต 9 จังหวัดภาคเหนือ — เลือกตำบลที่ต้องการดู";
+    return (
+      <div className="absolute left-3 right-3 top-3 z-[8] rounded-lg border border-white/12 bg-[#0b1d22]/85 px-4 py-2.5 text-xs text-[#cfe2df] backdrop-blur-md">
+        {msg}
+      </div>
+    );
+  }
+  const tier = row.liveTier;
+  const meta = riskMeta[tier];
+  const p = row.feature.properties;
+  const action = tierActionTH(tier);
+  const pulse = tier === "severe" || tier === "high";
+  return (
+    <div
+      className={`absolute left-3 right-3 top-3 z-[8] flex items-center gap-3 rounded-xl border bg-[#0b1d22]/92 px-4 py-3 backdrop-blur-md transition ${
+        pulse ? "animate-pulse-slow" : ""
+      }`}
+      style={{ borderColor: `${meta.color}66` }}
+    >
+      <div
+        className="grid h-12 w-12 shrink-0 place-items-center rounded-lg text-[#071318]"
+        style={{ background: meta.color }}
+      >
+        <span className="text-[15px] font-extrabold">
+          {Math.round(row.liveNorm * 100)}
+        </span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="text-[#9fb7b3]">บ้านคุณอยู่ใน</span>
+          <span className="font-semibold text-white">ต. {p.NAME_3}</span>
+          <span className="text-[#9fb7b3]">อ. {p.NAME_2}</span>
+          <span className="text-[#9fb7b3]">{thaiName(p.NAME_1)}</span>
+        </div>
+        <div className="mt-0.5 flex items-baseline gap-2 text-sm">
+          <span className="text-[#cfe2df]">ตอนนี้:</span>
+          <span className="font-bold" style={{ color: meta.color }}>
+            {meta.label}
+          </span>
+          <span className="hidden truncate text-xs text-[#abc0bd] sm:inline">— {action}</span>
+        </div>
+      </div>
+      <button
+        className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-[#dff8f2] transition hover:border-[#40e0bd]/60 hover:bg-[#40e0bd]/10"
+        onClick={onLocate}
+        title="ซูมไปบ้านคุณ"
+      >
+        ดูบนแผนที่
+      </button>
+    </div>
   );
 }
 

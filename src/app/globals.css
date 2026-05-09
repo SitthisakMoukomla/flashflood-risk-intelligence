@@ -149,6 +149,14 @@ a {
   scrollbar-color: rgba(180, 227, 222, 0.3) transparent;
 }
 
+@keyframes pulse-slow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(215, 48, 39, 0.0); }
+  50% { box-shadow: 0 0 0 8px rgba(215, 48, 39, 0.18); }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 2.4s ease-in-out infinite;
+}
+
 .source-link {
   display: block;
   border: 1px solid var(--line);

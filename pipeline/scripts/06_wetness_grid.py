@@ -36,11 +36,13 @@ from pathlib import Path
 
 import click
 import numpy as np
+import rasterio
 import requests
 from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BBOX_PATH = REPO_ROOT / "data" / "aoi" / "aoi_bbox.json"
+SUSC_PATH = REPO_ROOT / "data" / "output" / "susceptibility.tif"
 PUBLIC_DATA = REPO_ROOT.parent / "public" / "data"
 PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
 OUT_PATH = PUBLIC_DATA / "wetness_grid.json"
@@ -149,6 +151,32 @@ def main(step: float, batch: int) -> None:
         rain_7d_all.extend(r7)
         precip_now_all.extend(pn)
 
+    # Sample the GEE static susceptibility raster at every grid point so the
+    # frontend can compute live risk per cell without re-loading the COG.
+    static_norm: list[float] = []
+    static_low = 0.0
+    static_high = 1.0
+    if SUSC_PATH.exists():
+        click.echo(f"[susc] sampling {SUSC_PATH.name} at {len(flat_lats)} grid points")
+        with rasterio.open(SUSC_PATH) as ds:
+            coords = list(zip(flat_lons, flat_lats))
+            samples = list(ds.sample(coords, indexes=1))
+            raw = np.array([s[0] if np.isfinite(s[0]) else float("nan") for s in samples])
+        valid = np.isfinite(raw)
+        if valid.any():
+            static_low = float(np.quantile(raw[valid], 0.02))
+            static_high = float(np.quantile(raw[valid], 0.98))
+            click.echo(f"[susc] norm range 2-98 pct = [{static_low:.3f}, {static_high:.3f}]")
+            denom = max(static_high - static_low, 1e-9)
+            normed = np.clip((raw - static_low) / denom, 0, 1)
+            normed[~valid] = 0
+            static_norm = [round(float(v), 4) for v in normed]
+        else:
+            static_norm = [0.0] * len(flat_lats)
+    else:
+        click.echo(f"[susc] {SUSC_PATH.name} missing — static_norm filled with zeros")
+        static_norm = [0.0] * len(flat_lats)
+
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "Open-Meteo Forecast API (past_days=7 daily + hourly precipitation)",
@@ -159,8 +187,11 @@ def main(step: float, batch: int) -> None:
         "step_deg": step,
         "wetness_norm_cap_mm": WETNESS_NORM_CAP_MM,
         "precip_now_norm_cap_mm_per_hr": PRECIP_NOW_NORM_CAP,
+        "static_norm_low": static_low,
+        "static_norm_high": static_high,
         "rain_7d_mm": [round(v, 2) for v in rain_7d_all],
         "precip_now_mm_per_hr": [round(v, 2) for v in precip_now_all],
+        "static_norm": static_norm,
     }
     OUT_PATH.write_text(json.dumps(payload))
     click.echo(f"\n[write] {OUT_PATH}  ({OUT_PATH.stat().st_size/1024:.1f} KB)")

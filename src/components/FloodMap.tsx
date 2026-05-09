@@ -27,7 +27,6 @@ import {
   buildTambonRows,
   computeLiveGrid,
   layerModes,
-  precipRampRGBA,
   riskRampColor,
   wetnessRampRGBA,
   type LayerMode,
@@ -220,10 +219,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const polyLayerRef = useRef<LeafletGeoJSON | null>(null);
   const rainLayerRef = useRef<Leaflet.TileLayer | null>(null);
   const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
-  const precipOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+
+  // Layer z-stack (lower = farther back). Polygons sit on canvas pane
+  // (zIndex ~600) so they're always on top for hover/click.
+  const Z_HAZARD = 200; // static / wetness / live
+  const Z_BUILDINGS = 350; // bumped above hazard so density reads through
+  const Z_RADAR = 450; // RainViewer on top of everything raster
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
@@ -234,7 +238,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
   const [layerMode, setLayerMode] = useState<LayerMode>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
-  const [showPrecipOverlay, setShowPrecipOverlay] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
@@ -458,6 +461,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     staticOverlayRef.current = L.imageOverlay("/data/static_overlay.png", [[s, w], [n, e]], {
       opacity: 0.78,
       interactive: false,
+      zIndex: Z_HAZARD,
     }).addTo(map);
   }, [isMapReady, layerMode, staticMeta]);
 
@@ -485,6 +489,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     wetnessOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
       opacity: 0.7,
       interactive: false,
+      zIndex: Z_HAZARD,
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
@@ -520,6 +525,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
       opacity: 0.78,
       interactive: false,
+      zIndex: Z_HAZARD,
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
@@ -537,6 +543,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
       interactive: false,
+      zIndex: Z_BUILDINGS,
     }).addTo(map);
   }, [isMapReady, showBuildings, buildingsMeta]);
 
@@ -552,40 +559,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (showRainOverlay && rainLayer?.tileUrl) {
       rainLayerRef.current = L.tileLayer(rainLayer.tileUrl, {
         opacity: 0.55,
-        zIndex: 450,
-        maxNativeZoom: 10,
+        zIndex: Z_RADAR,
+        // RainViewer free tier (size 256, color scheme 2) only serves real
+        // tiles up to z=7. z>=8 returns the "Zoom Level Not Supported"
+        // placeholder. Cap maxNativeZoom and let Leaflet upscale.
+        maxNativeZoom: 7,
         maxZoom: 18,
         attribution: "RainViewer",
       }).addTo(map);
     }
   }, [isMapReady, showRainOverlay, rainLayer]);
-
-  // Precip-now overlay
-  useEffect(() => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    if (!L || !map || !isMapReady) return;
-    if (precipOverlayRef.current) {
-      precipOverlayRef.current.removeFrom(map);
-      precipOverlayRef.current = null;
-    }
-    if (!showPrecipOverlay || !grid) return;
-    const aoiMask = grid.static_norm;
-    const url = renderGridToDataURL(
-      grid.cols,
-      grid.rows,
-      grid.precip_now_mm_per_hr,
-      grid.precip_now_norm_cap_mm_per_hr,
-      precipRampRGBA,
-      aoiMask,
-    );
-    if (!url) return;
-    const [w, s, e, n] = grid.grid_bbox;
-    precipOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
-      opacity: 0.75,
-      interactive: false,
-    }).addTo(map);
-  }, [isMapReady, showPrecipOverlay, grid]);
 
   // ─── Actions ─────────────────────────────────────────────────
   const flyToTambon = (gid: string) => {
@@ -673,14 +656,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             hint={rainLayer ? `RainViewer · ${formatTimeBKK(rainLayer.frameTime)}` : "ไม่มีข้อมูล"}
             icon={<Radar size={18} strokeWidth={2} />}
             onClick={() => setShowRainOverlay((v) => !v)}
-          />
-          <LayerSwitch
-            on={showPrecipOverlay}
-            disabled={!grid}
-            label="ฝนตอนนี้"
-            hint="พื้นที่ฝนกำลังตก · Open-Meteo"
-            icon={<Droplets size={18} strokeWidth={2} />}
-            onClick={() => setShowPrecipOverlay((v) => !v)}
           />
           <LayerSwitch
             on={showBuildings}

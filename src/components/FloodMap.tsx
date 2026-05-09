@@ -1136,7 +1136,6 @@ function HeroRibbon({
   const action = tierActionTH(tier);
   const pulseClass = tier === "high" || tier === "severe" ? "pulse" : "";
   const isUser = row && userRow && row.feature.properties.GID_3 === userRow.feature.properties.GID_3;
-  const score = row ? Math.round(row.liveNorm * 100) : 0;
   const liveLabel = isUser ? "บ้านคุณอยู่ที่" : "ตำบลที่เลือก";
 
   const statusMsg =
@@ -1204,19 +1203,7 @@ function HeroRibbon({
               <span className="desktop-only" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
                 · {action}
               </span>
-              <span
-                className="num-mono desktop-only"
-                style={{
-                  marginLeft: "auto",
-                  fontSize: 22,
-                  fontWeight: 700,
-                  color: riskMeta[tier].color,
-                  paddingRight: 6,
-                }}
-              >
-                {score}
-                <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>/100</span>
-              </span>
+              <span style={{ marginLeft: "auto" }} aria-hidden />
             </>
           ) : (
             <span style={{ color: "var(--ink-2)", fontSize: 13 }}>
@@ -1364,7 +1351,6 @@ function Drawer({
 }) {
   const p = row.feature.properties;
   const tier = row.liveTier;
-  const score = Math.round(row.liveNorm * 100);
 
   // Contribution components — derived from per-tambon row values
   const terrain = Math.min(1, row.staticNorm);
@@ -1402,35 +1388,25 @@ function Drawer({
             อ.{p.NAME_2} · จ.{thaiName(p.NAME_1)}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ textAlign: "right" }}>
-            <div className="num-mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-              อันดับ
-            </div>
-            <div className="num-mono" style={{ fontSize: 16, fontWeight: 600 }}>
-              {p.rank}
-              <span style={{ color: "var(--ink-3)", marginLeft: 2 }}>/ 663</span>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 14,
-              background: "rgba(255,255,255,0.10)",
-              color: "var(--ink)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              border: 0,
-              cursor: "pointer",
-            }}
-            aria-label="ปิด"
-          >
-            <X size={14} />
-          </button>
-        </div>
+        <button
+          onClick={onClose}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.10)",
+            color: "var(--ink)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: 0,
+            cursor: "pointer",
+            flex: "none",
+          }}
+          aria-label="ปิด"
+        >
+          <X size={14} />
+        </button>
       </div>
 
       <div className="drawer-scroll" style={{ display: "flex", flexDirection: "column", gap: 14, paddingRight: 4 }}>
@@ -1440,14 +1416,6 @@ function Drawer({
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="label-tier">{TIER_TH[tier]}</div>
             <div className="label-en">{TIER_EN[tier]} · flash flood risk</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="num-mono" style={{ fontSize: 24, fontWeight: 700, color: "currentColor" }}>
-              {score}
-            </div>
-            <div className="caps" style={{ color: "currentColor", opacity: 0.7 }}>
-              / 100
-            </div>
           </div>
         </div>
 
@@ -1462,75 +1430,64 @@ function Drawer({
             ทำไมถึงระดับนี้
           </div>
           <div className="contrib">
-            <ContribRow
-              name="ภูมิประเทศ"
-              en="Terrain"
-              cls="terrain"
-              value={Math.round(terrain * 100)}
-              pct={terrain * 100}
-            />
+            <ContribRow name="ภูมิประเทศ" en="Terrain" cls="terrain" pct={terrain * 100} />
             <ContribRow
               name="ดินอิ่มน้ำ"
               en="Wetness"
               cls="wet"
-              value={Math.round(wet * 100)}
               pct={wet * 100}
-              extra={row.wetnessMm !== null ? `${row.wetnessMm.toFixed(0)} มม. / 7วัน` : undefined}
+              extra={
+                row.wetnessMm !== null && row.wetnessMm > 0
+                  ? wet > 0.66
+                    ? "ฝนสะสม 7 วันสูง"
+                    : wet > 0.33
+                      ? "ฝนสะสม 7 วันปานกลาง"
+                      : "ฝนสะสม 7 วันต่ำ"
+                  : undefined
+              }
             />
             <ContribRow
               name="ฝนตอนนี้"
               en="Precip"
               cls="precip"
-              value={Math.round(precip * 100)}
               pct={precip * 100}
-              extra={`${row.precipMmPerHr.toFixed(1)} มม./ชม.`}
+              extra={
+                row.precipMmPerHr > 5
+                  ? "ฝนตกหนัก"
+                  : row.precipMmPerHr > 1
+                    ? "ฝนตกปานกลาง"
+                    : row.precipMmPerHr > 0
+                      ? "ฝนพรำ"
+                      : undefined
+              }
             />
           </div>
         </div>
 
-        {/* Mini stats */}
-        <div style={{ display: "flex", gap: 10 }}>
+        {/* Buildings exposure — kept because it's an inventory count
+         * (how many homes), not a risk score. */}
+        {p.buildings !== undefined ? (
           <div
             style={{
-              flex: 1,
-              padding: 10,
+              padding: 12,
               borderRadius: 10,
               background: "rgba(120,200,200,0.06)",
               border: "1px solid var(--hairline)",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
             }}
           >
-            <div className="caps">บ้านเรือน</div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-              <span className="num-mono">
-                {p.buildings !== undefined ? formatNumber(p.buildings) : "—"}
-              </span>
-              <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>หลัง</span>
-            </div>
-            {p.building_area_km2 !== undefined ? (
-              <div className="num-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
-                {p.building_area_km2.toFixed(2)} กม²
+            <Building2 size={22} style={{ color: "var(--ink-2)", flex: "none" }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="caps">บ้านเรือนในตำบล</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+                <span className="num-mono">{formatNumber(p.buildings)}</span>
+                <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 6 }}>หลัง</span>
               </div>
-            ) : null}
-          </div>
-          <div
-            style={{
-              flex: 1,
-              padding: 10,
-              borderRadius: 10,
-              background: "rgba(120,200,200,0.06)",
-              border: "1px solid var(--hairline)",
-            }}
-          >
-            <div className="caps">class ≥ 3</div>
-            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-              <span className="num-mono">{p.class_3plus_pct.toFixed(0)}</span>
-              <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>% ของพื้นที่</span>
-            </div>
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
-              ขนาด {formatNumber(p.cells)} cells
             </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Top risk */}
         <div>
@@ -1540,7 +1497,6 @@ function Drawer({
           <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {topRiskList.map((r) => {
               const t = r.liveTier;
-              const v = Math.round(r.liveNorm * 100);
               const isCurrent = r.feature.properties.GID_3 === p.GID_3;
               return (
                 <button
@@ -1569,11 +1525,8 @@ function Drawer({
                       อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
                     </span>
                   </span>
-                  <span
-                    className="num-mono"
-                    style={{ fontSize: 14, color: riskMeta[t].color, fontWeight: 600 }}
-                  >
-                    {v}
+                  <span className={`tier ${TIER_PILL[t]}`} style={{ fontSize: 11 }}>
+                    {TIER_TH[t]}
                   </span>
                 </button>
               );
@@ -1653,14 +1606,12 @@ function ContribRow({
   name,
   en,
   cls,
-  value,
   pct,
   extra,
 }: {
   name: string;
   en: string;
   cls: string;
-  value: number;
   pct: number;
   extra?: string;
 }) {
@@ -1669,11 +1620,10 @@ function ContribRow({
       <div className="contrib-head">
         <span className="name">
           {name} <small>{en}</small>
-          {extra ? (
-            <small style={{ color: "var(--ink-3)", marginLeft: 6 }}>· {extra}</small>
-          ) : null}
         </span>
-        <span className="val num-mono">{value}</span>
+        {extra ? (
+          <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{extra}</span>
+        ) : null}
       </div>
       <div className="contrib-track">
         <div className={`contrib-fill ${cls}`} style={{ width: `${pct}%` }} />

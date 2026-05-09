@@ -24,9 +24,12 @@ import {
   buildTambonRows,
   colorForRow,
   layerModes,
+  precipRampRGBA,
+  wetnessRampRGBA,
   type LayerMode,
   type TambonCollection,
   type TambonRow,
+  type WetnessGrid,
   type WetnessPayload,
 } from "@/lib/tambon";
 
@@ -81,18 +84,50 @@ function scoreOfRow(row: TambonRow, mode: LayerMode): number {
   return row.staticNorm;
 }
 
+/** Render a flat grid of values to a data URL. Returns null if no map context. */
+function renderGridToDataURL(
+  cols: number,
+  rows: number,
+  values: number[],
+  cap: number,
+  ramp: (t: number) => [number, number, number, number],
+): string | null {
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const img = ctx.createImageData(cols, rows);
+  const buf = img.data;
+  for (let i = 0; i < cols * rows; i++) {
+    const t = Math.min(1, Math.max(0, values[i] / cap));
+    const c = ramp(t);
+    buf[i * 4] = c[0];
+    buf[i * 4 + 1] = c[1];
+    buf[i * 4 + 2] = c[2];
+    buf[i * 4 + 3] = c[3];
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas.toDataURL();
+}
+
 export function FloodMap({ copy, sources }: FloodMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const leafletRef = useRef<typeof Leaflet | null>(null);
   const polyLayerRef = useRef<LeafletGeoJSON | null>(null);
   const rainLayerRef = useRef<Leaflet.TileLayer | null>(null);
+  const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const precipOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
+  const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
   const [layerMode, setLayerMode] = useState<LayerMode>("static");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
+  const [showPrecipOverlay, setShowPrecipOverlay] = useState(false);
   const [provinceFilter, setProvinceFilter] = useState<string>("");
   const [query, setQuery] = useState("");
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
@@ -104,9 +139,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     let active = true;
     (async () => {
       try {
-        const [vrRes, wRes] = await Promise.all([
+        const [vrRes, wRes, gRes] = await Promise.all([
           fetch("/data/village_risk.geojson"),
           fetch("/data/wetness_7d.json"),
+          fetch("/data/wetness_grid.json"),
         ]);
         if (!vrRes.ok) throw new Error(`village_risk.geojson ${vrRes.status}`);
         const fc = (await vrRes.json()) as TambonCollection;
@@ -114,6 +150,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         if (wRes.ok) {
           const w = (await wRes.json()) as WetnessPayload;
           if (active) setWetness(w);
+        }
+        if (gRes.ok) {
+          const g = (await gRes.json()) as WetnessGrid;
+          if (active) setGrid(g);
         }
       } catch (e) {
         if (active) setLoadError(e instanceof Error ? e.message : "load failed");
@@ -236,6 +276,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const row = gid ? rowByGid.get(gid) : undefined;
         if (!row) return {};
         const isSelected = row.feature.properties.GID_3 === selectedGid;
+        // In wetness mode the gridded raster carries the colour — show the
+        // tambon as a faint outline only, still clickable for the detail panel.
+        if (layerMode === "wetness") {
+          return {
+            fillOpacity: 0,
+            color: isSelected ? "#ffffff" : "rgba(255,255,255,0.18)",
+            weight: isSelected ? 2.5 : 0.4,
+            opacity: 0.9,
+          };
+        }
         return {
           fillColor: colorForRow(row, layerMode),
           color: isSelected ? "#ffffff" : "#1d2f33",
@@ -276,10 +326,66 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       rainLayerRef.current = L.tileLayer(rainLayer.tileUrl, {
         opacity: 0.55,
         zIndex: 450,
+        // RainViewer free tiles only render up to z10 — let Leaflet upsample beyond.
+        maxNativeZoom: 10,
+        maxZoom: 18,
         attribution: "RainViewer",
       }).addTo(map);
     }
   }, [isMapReady, showRainOverlay, rainLayer]);
+
+  // 6) Wetness raster overlay (continuous field, not following polygons)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (wetnessOverlayRef.current) {
+      wetnessOverlayRef.current.removeFrom(map);
+      wetnessOverlayRef.current = null;
+    }
+    if (layerMode !== "wetness" || !grid) return;
+    const url = renderGridToDataURL(
+      grid.cols,
+      grid.rows,
+      grid.rain_7d_mm,
+      grid.wetness_norm_cap_mm,
+      wetnessRampRGBA,
+    );
+    if (!url) return;
+    const [w, s, e, n] = grid.grid_bbox;
+    wetnessOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
+      opacity: 0.7,
+      interactive: false,
+      // CSS image-rendering: auto allows browser bilinear smoothing when scaled.
+      className: "wetness-overlay",
+    }).addTo(map);
+  }, [isMapReady, layerMode, grid]);
+
+  // 7) Live precip overlay (Open-Meteo nowcast, mm/hr)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (precipOverlayRef.current) {
+      precipOverlayRef.current.removeFrom(map);
+      precipOverlayRef.current = null;
+    }
+    if (!showPrecipOverlay || !grid) return;
+    const url = renderGridToDataURL(
+      grid.cols,
+      grid.rows,
+      grid.precip_now_mm_per_hr,
+      grid.precip_now_norm_cap_mm_per_hr,
+      precipRampRGBA,
+    );
+    if (!url) return;
+    const [w, s, e, n] = grid.grid_bbox;
+    precipOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
+      opacity: 0.75,
+      interactive: false,
+      className: "precip-overlay",
+    }).addTo(map);
+  }, [isMapReady, showPrecipOverlay, grid]);
 
   const fitNorth = () => {
     mapRef.current?.flyTo([18.7, 99.5], 7, { duration: 0.7 });
@@ -418,18 +524,32 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               </p>
             </div>
 
-            <button
-              className={`flex h-10 w-full items-center justify-center gap-2 rounded-lg border px-2 text-xs transition ${
-                showRainOverlay
-                  ? "border-[#40e0bd]/70 bg-[#40e0bd]/12 text-white"
-                  : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
-              } ${!rainLayer ? "cursor-not-allowed opacity-50" : ""}`}
-              disabled={!rainLayer}
-              onClick={() => setShowRainOverlay((v) => !v)}
-              title={rainLayer ? `radar ${formatDate(rainLayer.frameTime)}` : "ไม่มี radar tile"}
-            >
-              <Radar size={14} /> Live radar overlay
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
+                  showRainOverlay
+                    ? "border-[#40e0bd]/70 bg-[#40e0bd]/12 text-white"
+                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
+                } ${!rainLayer ? "cursor-not-allowed opacity-50" : ""}`}
+                disabled={!rainLayer}
+                onClick={() => setShowRainOverlay((v) => !v)}
+                title={rainLayer ? `radar ${formatDate(rainLayer.frameTime)}` : "ไม่มี radar tile"}
+              >
+                <Radar size={13} /> Radar
+              </button>
+              <button
+                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
+                  showPrecipOverlay
+                    ? "border-[#fdae61]/70 bg-[#fdae61]/12 text-white"
+                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
+                } ${!grid ? "cursor-not-allowed opacity-50" : ""}`}
+                disabled={!grid}
+                onClick={() => setShowPrecipOverlay((v) => !v)}
+                title="Open-Meteo precip nowcast (mm/hr) — ใช้เป็น live trigger"
+              >
+                <Droplets size={13} /> Precip now
+              </button>
+            </div>
 
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8da5a4]" size={16} />
@@ -577,60 +697,44 @@ function SelectedDetail({ row, sources }: { row: TambonRow; sources: SourceNote[
             <MapPin size={15} /> Hazard breakdown
           </h3>
           <dl className="grid grid-cols-2 gap-2 text-xs">
-            <Field label="risk mean" value={p.risk_mean.toFixed(3)} />
-            <Field label="risk max" value={p.risk_max.toFixed(3)} />
-            <Field label="risk p75" value={p.risk_p75.toFixed(3)} />
-            <Field label="risk p90" value={p.risk_p90.toFixed(3)} />
-            <Field label="risk p95" value={p.risk_p95.toFixed(3)} />
-            <Field
-              label="class ≥3"
-              value={`${p.class_3plus_pct.toFixed(1)}%`}
-            />
-            <Field label="cells" value={formatNumber(p.cells)} />
-            <Field label="class max" value={String(p.class_max)} />
+            <Field label="p90 hazard" value={p.risk_p90.toFixed(2)} />
+            <Field label="p95 hazard" value={p.risk_p95.toFixed(2)} />
+            <Field label="class ≥3" value={`${p.class_3plus_pct.toFixed(0)}%`} />
+            <Field label="ขนาด" value={`${formatNumber(p.cells)} cells`} />
           </dl>
-        </section>
-
-        <section className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <Droplets size={15} /> Soil moisture proxy (7d)
-          </h3>
-          <p className="text-xs leading-5 text-[#c3d8d5]">
+          <p className="mt-3 text-[11px] leading-5 text-[#9fb7b3]">
             {row.wetnessMm === null
-              ? "ไม่มีข้อมูลฝน 7 วันสำหรับตำบลนี้"
-              : `ฝนสะสม 7 วัน ${row.wetnessMm.toFixed(1)} มม. → wetness norm ${(row.wetnessNorm * 100).toFixed(0)}/100. ใช้เป็น proxy ของดินอิ่มน้ำ (cap ที่ 80 มม. = AMC III tropical).`}
+              ? "ดินอิ่มน้ำ: ไม่มีข้อมูลฝน 7 วันสำหรับตำบลนี้"
+              : `ฝนสะสม 7 วัน ${row.wetnessMm.toFixed(0)} มม. → ${(row.wetnessNorm * 100).toFixed(0)}/100 (cap 80 มม.)`}
           </p>
         </section>
 
-        <section>
-          <h3 className="mb-2 text-sm font-semibold">Method</h3>
-          <div className="space-y-2">
-            {methodSteps.map((step, i) => (
-              <div className="flex gap-2 text-xs leading-5 text-[#b9cfcc]" key={step}>
+        <details className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-xs">
+          <summary className="cursor-pointer select-none font-semibold text-[#dff8f2]">
+            Method &amp; sources
+          </summary>
+          <div className="mt-3 space-y-2 leading-5 text-[#b9cfcc]">
+            {methodSteps.slice(0, 4).map((step, i) => (
+              <div className="flex gap-2" key={step}>
                 <span className="font-mono text-[#40e0bd]">{i + 1}</span>
                 <span>{step}</span>
               </div>
             ))}
           </div>
-        </section>
-
-        <section>
-          <h3 className="mb-3 text-sm font-semibold">Sources</h3>
-          <div className="space-y-2">
+          <div className="mt-3 space-y-2">
             {sources.map((source) => (
               <a
-                className="source-link"
+                className="block text-[11px] text-[#9fb7b3] underline-offset-2 hover:text-white hover:underline"
                 href={source.href}
                 key={source.href}
                 rel="noreferrer"
                 target="_blank"
               >
-                <div className="text-sm font-semibold">{source.label}</div>
-                <div className="mt-1 text-xs leading-5 text-[#9fb7b3]">{source.note}</div>
+                {source.label}
               </a>
             ))}
           </div>
-        </section>
+        </details>
       </div>
     </div>
   );

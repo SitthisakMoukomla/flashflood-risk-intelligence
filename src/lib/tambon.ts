@@ -44,6 +44,42 @@ export type WetnessPayload = {
   tambon: WetnessRecord[];
 };
 
+export type WetnessGrid = {
+  generated_at: string;
+  source: string;
+  bbox: [number, number, number, number];
+  grid_bbox: [number, number, number, number]; // west, south, east, north
+  rows: number;
+  cols: number;
+  step_deg: number;
+  wetness_norm_cap_mm: number;
+  precip_now_norm_cap_mm_per_hr: number;
+  rain_7d_mm: number[];
+  precip_now_mm_per_hr: number[];
+};
+
+/** RGBA color for wetness 0..1: light → deep blue. */
+export function wetnessRampRGBA(t: number): [number, number, number, number] {
+  const x = Math.max(0, Math.min(1, t));
+  const r = Math.round(220 - 195 * x);
+  const g = Math.round(238 - 145 * x);
+  const b = Math.round(255 - 60 * x);
+  // Below ~0.05 use a low alpha so dry areas don't paint over the basemap.
+  const a = Math.round(Math.min(220, 60 + 200 * x));
+  return [r, g, b, a];
+}
+
+/** RGBA color for live precipitation 0..1: transparent → orange/red. */
+export function precipRampRGBA(t: number): [number, number, number, number] {
+  const x = Math.max(0, Math.min(1, t));
+  if (x < 0.02) return [0, 0, 0, 0];
+  const r = Math.round(255);
+  const g = Math.round(220 - 200 * x);
+  const b = Math.round(150 - 130 * x);
+  const a = Math.round(140 + 100 * x);
+  return [r, g, b, a];
+}
+
 export type LayerMode = "static" | "wetness" | "live";
 
 export const layerModes: Record<LayerMode, { label: string; description: string }> = {

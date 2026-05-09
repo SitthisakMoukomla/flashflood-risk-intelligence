@@ -238,9 +238,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const isSelected = row.feature.properties.GID_3 === selectedGid;
         return {
           fillColor: colorForRow(row, layerMode),
-          color: isSelected ? "#ffffff" : "#0a1318",
-          weight: isSelected ? 2 : 0.4,
-          fillOpacity: 0.7,
+          color: isSelected ? "#ffffff" : "#1d2f33",
+          weight: isSelected ? 2.5 : 0.6,
+          fillOpacity: 0.6,
           opacity: 0.85,
         };
       },

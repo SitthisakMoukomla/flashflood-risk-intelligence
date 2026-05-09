@@ -22,6 +22,9 @@ export const productCopy = {
 
 export type RiskTier = "severe" | "high" | "watch" | "low";
 
+// Thresholds calibrated to the actual AOI distribution of risk_p90_norm:
+// 9 northern provinces, GEE static export, May 2026.
+// p90 of distribution ≈ 0.55, p95 ≈ 0.6, max ≈ 0.69.
 export const riskMeta: Record<
   RiskTier,
   { label: string; color: string; minNorm: number; tone: string }
@@ -29,19 +32,19 @@ export const riskMeta: Record<
   severe: {
     label: "Severe",
     color: "#d73027",
-    minNorm: 0.75,
-    tone: "ตำบลที่อยู่ใน p90 บนสุดของ AOI — เฝ้าระวังเป็นลำดับแรก",
+    minNorm: 0.55,
+    tone: "ตำบลที่อยู่ใน p95 บนสุดของ AOI — เฝ้าระวังเป็นลำดับแรก",
   },
   high: {
     label: "High",
     color: "#fdae61",
-    minNorm: 0.5,
+    minNorm: 0.4,
     tone: "ความเสี่ยงสูงกว่าค่ากลาง — ติดตามเมื่อฝนสะสมเข้าพื้นที่",
   },
   watch: {
     label: "Watch",
     color: "#fee08b",
-    minNorm: 0.25,
+    minNorm: 0.2,
     tone: "ความเสี่ยงปานกลาง — เฝ้าระวังตามฤดูกาล",
   },
   low: {

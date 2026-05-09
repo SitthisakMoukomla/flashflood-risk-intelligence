@@ -222,12 +222,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const buildingsPtsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const buildingsPtsCacheRef = useRef<Map<string, [number, number][]>>(new Map());
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
   const Z_HAZARD = 200; // static / wetness / live
   const Z_BUILDINGS = 350; // bumped above hazard so density reads through
   const Z_RADAR = 450; // RainViewer on top of everything raster
+  const VECTOR_BUILDING_ZOOM = 12; // zoom threshold for switching density → points
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
@@ -249,6 +252,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [methodOpen, setMethodOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(7);
 
   // 1) Data load
   useEffect(() => {
@@ -375,6 +379,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         maxZoom: 18,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
       }).addTo(map);
+      map.on("zoomend", () => setZoom(map.getZoom()));
       mapRef.current = map;
       setIsMapReady(true);
     })();
@@ -539,13 +544,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       buildingsOverlayRef.current = null;
     }
     if (!showBuildings || !buildingsMeta) return;
+    // When zoomed in on a selected tambon we render the actual building
+    // points (effect 7) — let those carry the visual instead of the blob.
+    if (zoom >= VECTOR_BUILDING_ZOOM && selectedGid) return;
     const [w, s, e, n] = buildingsMeta.grid_bbox;
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
       interactive: false,
       zIndex: Z_BUILDINGS,
     }).addTo(map);
-  }, [isMapReady, showBuildings, buildingsMeta]);
+  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid]);
 
   // Radar overlay
   useEffect(() => {
@@ -569,6 +577,68 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       }).addTo(map);
     }
   }, [isMapReady, showRainOverlay, rainLayer]);
+
+  // 7) Per-tambon building points (vector). Replaces the density blob with
+  // actual centroids when the user has selected a tambon AND zoomed past 12.
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+
+    const clear = () => {
+      if (buildingsPtsLayerRef.current) {
+        buildingsPtsLayerRef.current.removeFrom(map);
+        buildingsPtsLayerRef.current = null;
+      }
+    };
+
+    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !selectedGid) {
+      clear();
+      return;
+    }
+
+    let cancelled = false;
+    const cache = buildingsPtsCacheRef.current;
+    const draw = (pts: [number, number][]) => {
+      if (cancelled) return;
+      clear();
+      if (pts.length === 0) return;
+      const group = L.layerGroup();
+      // Smaller radius at lower zoom so dense areas don't smear into one blob.
+      const radius = Math.max(1.2, 0.5 + (zoom - VECTOR_BUILDING_ZOOM) * 0.6);
+      for (const [lat, lon] of pts) {
+        L.circleMarker([lat, lon], {
+          radius,
+          color: "#fdae61",
+          weight: 0,
+          fillColor: "#fdae61",
+          fillOpacity: 0.85,
+          interactive: false,
+        }).addTo(group);
+      }
+      group.addTo(map);
+      buildingsPtsLayerRef.current = group;
+    };
+
+    const cached = cache.get(selectedGid);
+    if (cached) {
+      draw(cached);
+    } else {
+      fetch(`/data/buildings_pts/${selectedGid}.json`)
+        .then((r) => (r.ok ? (r.json() as Promise<[number, number][]>) : Promise.resolve([])))
+        .then((pts) => {
+          cache.set(selectedGid, pts);
+          draw(pts);
+        })
+        .catch(() => {
+          /* silent — fall back to density blob */
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMapReady, showBuildings, selectedGid, zoom]);
 
   // ─── Actions ─────────────────────────────────────────────────
   const flyToTambon = (gid: string) => {

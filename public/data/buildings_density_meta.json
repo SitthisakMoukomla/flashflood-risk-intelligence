@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-05-09T09:17:06.553692+00:00",
+  "source": "Google Open Buildings v3 — confidence ≥ 0.7 centroids",
+  "bbox": [
+    97.3452,
+    17.2055,
+    101.3594,
+    20.4631
+  ],
+  "grid_bbox": [
+    97.3452,
+    17.2055,
+    101.3652,
+    20.465500000000002
+  ],
+  "rows": 326,
+  "cols": 402,
+  "step_deg": 0.01,
+  "total_buildings": 6266233,
+  "log_norm_p5": 0.6931471824645996,
+  "log_norm_p98": 6.796823501586914,
+  "ramp": "orange"
+}

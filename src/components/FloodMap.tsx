@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Building2,
   Droplets,
   Layers,
   LocateFixed,
@@ -53,6 +54,14 @@ type StaticOverlayMeta = {
   height: number;
   norm_low: number;
   norm_high: number;
+};
+
+type BuildingsOverlayMeta = {
+  generated_at: string;
+  grid_bbox: [number, number, number, number]; // west, south, east, north
+  rows: number;
+  cols: number;
+  total_buildings: number;
 };
 
 const PROVINCE_NAMES: Record<string, string> = {
@@ -175,15 +184,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const precipOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [staticMeta, setStaticMeta] = useState<StaticOverlayMeta | null>(null);
+  const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
   const [layerMode, setLayerMode] = useState<LayerMode>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showPrecipOverlay, setShowPrecipOverlay] = useState(false);
+  const [showBuildings, setShowBuildings] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const [geoStatus, setGeoStatus] = useState<"idle" | "asking" | "granted" | "denied" | "unsupported" | "outside">("idle");
@@ -218,6 +230,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         if (sRes.ok) {
           const m = (await sRes.json()) as StaticOverlayMeta;
           if (active) setStaticMeta(m);
+        }
+        try {
+          const bRes = await fetch("/data/buildings_density_meta.json");
+          if (bRes.ok && active) {
+            setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
+          }
+        } catch {
+          /* buildings overlay is optional */
         }
       } catch (e) {
         if (active) setLoadError(e instanceof Error ? e.message : "load failed");
@@ -532,6 +552,24 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
+  // 6d) Buildings density overlay (Google Open Buildings v3 — 5.6M หลัง)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (buildingsOverlayRef.current) {
+      buildingsOverlayRef.current.removeFrom(map);
+      buildingsOverlayRef.current = null;
+    }
+    if (!showBuildings || !buildingsMeta) return;
+    const [w, s, e, n] = buildingsMeta.grid_bbox;
+    buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
+      opacity: 0.85,
+      interactive: false,
+      className: "buildings-overlay",
+    }).addTo(map);
+  }, [isMapReady, showBuildings, buildingsMeta]);
+
   // 7) Live precip overlay (Open-Meteo nowcast, mm/hr)
   useEffect(() => {
     const L = leafletRef.current;
@@ -695,7 +733,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
                   showRainOverlay
@@ -716,9 +754,21 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                 } ${!grid ? "cursor-not-allowed opacity-50" : ""}`}
                 disabled={!grid}
                 onClick={() => setShowPrecipOverlay((v) => !v)}
-                title="Open-Meteo precip nowcast (mm/hr) — ใช้เป็น live trigger"
+                title="Open-Meteo precip nowcast (mm/hr)"
               >
-                <Droplets size={13} /> Precip now
+                <Droplets size={13} /> ฝน
+              </button>
+              <button
+                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
+                  showBuildings
+                    ? "border-[#fdae61]/70 bg-[#fdae61]/12 text-white"
+                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
+                } ${!buildingsMeta ? "cursor-not-allowed opacity-50" : ""}`}
+                disabled={!buildingsMeta}
+                onClick={() => setShowBuildings((v) => !v)}
+                title={buildingsMeta ? `Open Buildings v3 — ${formatNumber(buildingsMeta.total_buildings)} หลัง` : "ไม่มี"}
+              >
+                <Building2 size={13} /> อาคาร
               </button>
             </div>
 

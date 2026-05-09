@@ -6,8 +6,11 @@ import {
   ChevronDown,
   Droplets,
   Info,
+  Layers,
+  Locate,
   MapPin,
   Mountain,
+  RefreshCw,
   Radar,
   Search,
   X,
@@ -68,6 +71,36 @@ type BuildingsOverlayMeta = {
 };
 
 type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
+
+type Basemap = "osm" | "topo" | "satellite";
+
+const BASEMAPS: Record<
+  Basemap,
+  { label: string; url: string; attribution: string; maxNativeZoom?: number; maxZoom: number }
+> = {
+  osm: {
+    label: "OSM",
+    url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
+  },
+  topo: {
+    label: "Topo",
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attribution:
+      'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>, <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)',
+    maxNativeZoom: 17,
+    maxZoom: 19,
+  },
+  satellite: {
+    label: "Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution:
+      "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, IGN",
+    maxNativeZoom: 19,
+    maxZoom: 20,
+  },
+};
 
 // ─── Helpers ────────────────────────────────────────────────────
 
@@ -224,6 +257,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const buildingsPtsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const buildingsPtsCacheRef = useRef<Map<string, [number, number][]>>(new Map());
+  const basemapRef = useRef<Leaflet.TileLayer | null>(null);
+  const userMarkerRef = useRef<Leaflet.LayerGroup | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
@@ -242,6 +277,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [layerMode, setLayerMode] = useState<LayerMode>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
+  const [basemap, setBasemap] = useState<Basemap>("osm");
+  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
@@ -291,6 +329,58 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       active = false;
     };
   }, []);
+
+  // 1c) Dynamic refresh — re-fetch wetness grid (rain + precip-now) on a
+  // 15-minute timer and whenever the tab regains focus. Frontend re-derives
+  // the live combined raster automatically because computeLiveGrid runs in
+  // a useMemo that depends on `grid`.
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      if (!active) return;
+      setRefreshing(true);
+      try {
+        const r = await fetch("/data/wetness_grid.json?t=" + Date.now());
+        if (r.ok && active) {
+          setGrid((await r.json()) as WetnessGrid);
+          setRefreshedAt(new Date());
+        }
+        const rv = await fetch("/api/rainviewer", { cache: "no-store" });
+        if (rv.ok && active) setRainLayer((await rv.json()) as RainLayerPayload);
+      } catch {
+        /* keep prev data */
+      } finally {
+        if (active) setRefreshing(false);
+      }
+    };
+    const id = window.setInterval(refresh, 15 * 60_000);
+    const onVis = () => {
+      if (!document.hidden) void refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
+
+  const triggerRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const r = await fetch("/data/wetness_grid.json?t=" + Date.now());
+      if (r.ok) {
+        setGrid((await r.json()) as WetnessGrid);
+        setRefreshedAt(new Date());
+      }
+      const rv = await fetch("/api/rainviewer", { cache: "no-store" });
+      if (rv.ok) setRainLayer((await rv.json()) as RainLayerPayload);
+    } catch {
+      /* silent */
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // 2) Geolocation
   useEffect(() => {
@@ -375,10 +465,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         preferCanvas: true,
       });
       L.control.zoom({ position: "bottomright" }).addTo(map);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 18,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
-      }).addTo(map);
       map.on("zoomend", () => setZoom(map.getZoom()));
       mapRef.current = map;
       setIsMapReady(true);
@@ -391,6 +477,59 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       setIsMapReady(false);
     };
   }, []);
+
+  // Basemap layer — swap when user picks OSM / Topo / Satellite
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (basemapRef.current) {
+      basemapRef.current.removeFrom(map);
+      basemapRef.current = null;
+    }
+    const b = BASEMAPS[basemap];
+    basemapRef.current = L.tileLayer(b.url, {
+      maxZoom: b.maxZoom,
+      maxNativeZoom: b.maxNativeZoom ?? b.maxZoom,
+      attribution: b.attribution,
+      zIndex: 0,
+    }).addTo(map);
+  }, [isMapReady, basemap]);
+
+  // User location pin
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (userMarkerRef.current) {
+      userMarkerRef.current.removeFrom(map);
+      userMarkerRef.current = null;
+    }
+    if (!userLoc) return;
+    const [lng, lat] = userLoc;
+    const tier = userRow?.liveTier ?? "low";
+    const color = riskMeta[tier].color;
+    const group = L.layerGroup();
+    L.circleMarker([lat, lng], {
+      radius: 18,
+      color,
+      weight: 0,
+      fillColor: color,
+      fillOpacity: 0.16,
+      interactive: false,
+      className: "user-loc-halo",
+    }).addTo(group);
+    L.circleMarker([lat, lng], {
+      radius: 7,
+      color: "#07131a",
+      weight: 2,
+      fillColor: color,
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(group);
+    group.addTo(map);
+    userMarkerRef.current = group;
+  }, [isMapReady, userLoc, userRow]);
 
   // Tambon click layer (transparent — only for hover/click hit testing)
   useEffect(() => {
@@ -655,6 +794,30 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     });
   };
 
+  const flyToUser = () => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!userLoc) {
+      // Re-request geolocation if we don't have it yet
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        setGeoStatus("asking");
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setUserLoc([pos.coords.longitude, pos.coords.latitude]);
+            setGeoStatus("granted");
+            map.flyTo([pos.coords.latitude, pos.coords.longitude], 13, { duration: 0.7 });
+          },
+          () => setGeoStatus("denied"),
+          { enableHighAccuracy: false, maximumAge: 5 * 60_000, timeout: 10_000 },
+        );
+      }
+      return;
+    }
+    const [lng, lat] = userLoc;
+    map.flyTo([lat, lng], 13, { duration: 0.7 });
+    if (userRow) setSelectedGid(userRow.feature.properties.GID_3);
+  };
+
   // Top-N risk list for drawer
   const topRiskList = useMemo(() => sortedRows.slice(0, 5), [sortedRows]);
 
@@ -757,6 +920,71 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         />
       ) : null}
 
+      {/* Map control cluster — basemap, location, refresh */}
+      <div
+        className="desktop-only"
+        style={{
+          position: "absolute",
+          left: 16,
+          bottom: 80,
+          zIndex: 17,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div className="glass" style={{ padding: 4, display: "flex", flexDirection: "column", gap: 2 }}>
+          <button
+            onClick={flyToUser}
+            title="ไปที่ตำแหน่งของคุณ"
+            aria-label="ไปที่ตำแหน่งของคุณ"
+            style={controlBtnStyle(userLoc !== null)}
+          >
+            <Locate size={18} strokeWidth={2} />
+          </button>
+          <button
+            onClick={triggerRefresh}
+            disabled={refreshing}
+            title="รีเฟรชข้อมูลฝน + เรดาร์"
+            aria-label="refresh"
+            style={controlBtnStyle(false, refreshing)}
+          >
+            <RefreshCw
+              size={18}
+              strokeWidth={2}
+              style={{ animation: refreshing ? "ff-spin 1s linear infinite" : undefined }}
+            />
+          </button>
+        </div>
+
+        <div className="glass" style={{ padding: 4 }}>
+          <div className="caps" style={{ padding: "4px 8px 2px", display: "flex", alignItems: "center", gap: 6 }}>
+            <Layers size={11} strokeWidth={2.4} /> Basemap
+          </div>
+          {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
+            <button
+              key={b}
+              onClick={() => setBasemap(b)}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: basemap === b ? "var(--ink)" : "var(--ink-3)",
+                background: basemap === b ? "rgba(64,224,189,0.12)" : "transparent",
+                border: 0,
+                borderRadius: 6,
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              {BASEMAPS[b].label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Bottom legend */}
       <div
         style={{
@@ -776,7 +1004,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             </span>
           ))}
           <span className="legend-meta">
-            {wetness ? `ดิน ${formatTimeBKK(wetness.generated_at)}` : "—"}
+            {refreshedAt
+              ? `อัปเดต ${formatTimeBKK(refreshedAt.toISOString())}`
+              : wetness
+                ? `ดิน ${formatTimeBKK(wetness.generated_at)}`
+                : "—"}
             {rainLayer ? ` · เรดาร์ ${formatTimeBKK(rainLayer.frameTime)}` : ""}
           </span>
         </div>
@@ -1386,6 +1618,22 @@ function ContribRow({
       </div>
     </div>
   );
+}
+
+function controlBtnStyle(active: boolean, disabled = false): React.CSSProperties {
+  return {
+    width: 38,
+    height: 38,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: 0,
+    borderRadius: 8,
+    background: active ? "rgba(64,224,189,0.18)" : "rgba(120,200,200,0.06)",
+    color: active ? "var(--accent)" : "var(--ink-2)",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.55 : 1,
+  };
 }
 
 // keep imports referenced even if not used in this version

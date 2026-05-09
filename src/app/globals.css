@@ -216,6 +216,17 @@ a { color: inherit; }
 }
 .dot-pulse { animation: ff-dot-pulse 1.4s ease-in-out infinite; }
 
+@keyframes ff-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ff-loc-pulse {
+  0%, 100% { opacity: 0.8; }
+  50%      { opacity: 0.25; }
+}
+.user-loc-halo { animation: ff-loc-pulse 1.8s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .hero-severe.pulse, .hero-high.pulse { animation: none; }
   .dot-pulse { animation: none; }

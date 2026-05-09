@@ -1,0 +1,6 @@
+pipeline/
+.git/
+.next/cache/
+node_modules/
+*.tif
+*.csv.gz

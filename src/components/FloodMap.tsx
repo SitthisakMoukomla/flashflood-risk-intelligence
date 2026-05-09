@@ -1082,6 +1082,55 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         </div>
       </div>
 
+      {/* Mobile-only floating action cluster — exposes the controls that
+          live in the desktop side panels. */}
+      <div className="mobile-only mobile-fab">
+        <button
+          onClick={flyToUser}
+          aria-label="ตำแหน่งของฉัน"
+          className={userLoc ? "on" : ""}
+          title="ไปที่ตำแหน่งของคุณ"
+        >
+          <Locate size={18} />
+        </button>
+        <button
+          onClick={triggerRefresh}
+          aria-label="รีเฟรช"
+          title="รีเฟรชข้อมูลฝน"
+        >
+          <RefreshCw
+            size={18}
+            style={{ animation: refreshing ? "ff-spin 1s linear infinite" : undefined }}
+          />
+        </button>
+        <button
+          onClick={() => setShowRainOverlay((v) => !v)}
+          className={showRainOverlay ? "on" : ""}
+          aria-label="เรดาร์ฝน"
+          disabled={!rainLayer}
+          title="เรดาร์ฝน"
+        >
+          <Radar size={18} />
+        </button>
+        <button
+          onClick={() => setShowBuildings((v) => !v)}
+          className={showBuildings ? "on" : ""}
+          aria-label="บ้านเรือน"
+          disabled={!buildingsMeta}
+          title="บ้านเรือน"
+        >
+          <Building2 size={18} />
+        </button>
+        <button
+          onClick={() => setDrawerOpen((v) => !v)}
+          className={drawerOpen ? "on" : ""}
+          aria-label="เปิด/ปิดรายละเอียด"
+          title="รายละเอียดตำบล"
+        >
+          <Info size={18} />
+        </button>
+      </div>
+
       {/* Mobile floating mode picker (compact) */}
       <div
         className="mobile-only"
@@ -1156,10 +1205,10 @@ function HeroRibbon({
 
   return (
     <div
-      className={`hero hero-${tier} ${pulseClass}`}
+      className={`hero hero-${tier} ${pulseClass} hero-mobile`}
       style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 22, padding: "12px 16px" }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44 }}>
+      <div className="hero-row" style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44, flexWrap: "wrap" }}>
         {/* Wordmark */}
         <div
           style={{
@@ -1175,7 +1224,7 @@ function HeroRibbon({
           </span>
           <span style={{ fontWeight: 700, letterSpacing: -0.2, fontSize: 14, whiteSpace: "nowrap" }}>
             FLASHFLOOD
-            <span className="desktop-only" style={{ color: "var(--ink-3)", fontWeight: 400 }}>
+            <span className="hero-wordmark-sub" style={{ color: "var(--ink-3)", fontWeight: 400 }}>
               {" "}· {copy.region}
             </span>
           </span>
@@ -1207,7 +1256,7 @@ function HeroRibbon({
               <span className={`tier ${TIER_PILL[tier]}`}>
                 ตอนนี้: {TIER_TH[tier]}
               </span>
-              <span className="desktop-only" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
+              <span className="hero-action" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
                 · {action}
               </span>
               <span style={{ marginLeft: "auto" }} aria-hidden />
@@ -1220,7 +1269,7 @@ function HeroRibbon({
         </div>
 
         {/* Search */}
-        <div style={{ position: "relative", width: 280, flex: "none" }} className="desktop-only">
+        <div className="hero-search" style={{ position: "relative", width: 280, flex: "none" }}>
           <div className="search">
             <Search size={14} style={{ color: "var(--ink-3)", flex: "none" }} />
             <input
@@ -1366,7 +1415,7 @@ function Drawer({
 
   return (
     <aside
-      className="glass desktop-only"
+      className="glass drawer-mobile"
       style={{
         position: "absolute",
         top: 88,

@@ -401,6 +401,59 @@ a { color: inherit; }
 /* ─── Mobile breakpoint ─────────────────────────────────────────── */
 @media (max-width: 820px) {
   .desktop-only { display: none !important; }
+
+  /* Compact hero on phones */
+  .hero-mobile {
+    padding: 10px 14px !important;
+  }
+  .hero-mobile .hero-search,
+  .hero-mobile .hero-wordmark-sub,
+  .hero-mobile .hero-action {
+    display: none !important;
+  }
+  .hero-mobile .hero-row {
+    gap: 8px !important;
+  }
+
+  /* Drawer becomes a bottom sheet */
+  .drawer-mobile {
+    position: absolute !important;
+    top: auto !important;
+    right: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-height: 70vh !important;
+    border-radius: 18px 18px 0 0 !important;
+    border-left: 0 !important;
+    border-top: 1px solid var(--hairline-2) !important;
+    z-index: 30 !important;
+  }
+
+  /* Mobile floating action cluster — single column */
+  .mobile-fab {
+    position: absolute;
+    right: 12px;
+    bottom: 96px;
+    z-index: 18;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mobile-fab button {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 12px;
+    background: var(--panel-strong);
+    color: var(--ink-2);
+    border: 1px solid var(--hairline-2);
+    cursor: pointer;
+  }
+  .mobile-fab button.on { color: var(--accent); border-color: rgba(64,224,189,0.5); background: rgba(64,224,189,0.14); }
 }
 @media (min-width: 821px) {
   .mobile-only { display: none !important; }

@@ -567,23 +567,21 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             opacity: 0.95,
           };
         }
-        // Tier-coloured outlines so the user can see priority tambon
-        // even with every hazard raster turned off. Low-tier polygons
-        // are fully invisible (no stroke, no fill) — explicit stroke:
-        // false because canvas rendering doesn't always honour weight: 0.
+        // Only Severe tambon carry a coloured outline — everything else
+        // stays invisible so the basemap is readable. User can still
+        // click any polygon (Leaflet canvas hit-test on geometry) and
+        // hover paints a transient white outline for orientation.
         const row = gid ? rowByGid.get(gid) : undefined;
         const tier = row?.liveTier ?? "low";
-        if (tier === "low") {
+        if (tier !== "severe") {
           return { stroke: false, fill: false };
         }
-        const color = riskMeta[tier].color;
-        const weight = tier === "severe" ? 1.6 : tier === "high" ? 1.2 : 0.9;
         return {
           stroke: true,
           fill: false,
-          color,
-          weight,
-          opacity: tier === "severe" ? 0.95 : tier === "high" ? 0.85 : 0.7,
+          color: riskMeta.severe.color,
+          weight: 1.6,
+          opacity: 0.95,
         };
       },
       onEachFeature: (feature, layer) => {
@@ -597,12 +595,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (path.feature?.properties?.GID_3 === selectedGid) return;
           const gid = path.feature?.properties?.GID_3;
           const r = gid ? rowByGid.get(gid) : undefined;
-          const isLow = !r || r.liveTier === "low";
+          const isSevere = r?.liveTier === "severe";
+          // All tambon get a faint hover ring so they read as clickable.
+          // Severe tambon already have a red outline — bump theirs to
+          // a thicker white so the contrast is obvious.
           path.setStyle({
             stroke: true,
             fill: false,
-            color: isLow ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.75)",
-            weight: isLow ? 0.8 : 1.4,
+            color: isSevere ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.55)",
+            weight: isSevere ? 1.8 : 0.9,
             opacity: 1,
           });
         });
@@ -1058,12 +1059,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         className="desktop-only"
       >
         <div className="glass legend">
-          {(["low", "watch", "high", "severe"] as RiskTier[]).map((t) => (
-            <span key={t} className="legend-chip">
-              <span className="sw" style={{ background: riskMeta[t].color }} />
-              {TIER_TH[t]}
-            </span>
-          ))}
+          <span className="legend-chip">
+            <span
+              className="sw"
+              style={{
+                background: "transparent",
+                border: `2px solid ${riskMeta.severe.color}`,
+                width: 14,
+                height: 14,
+              }}
+            />
+            ขอบแดง = ตำบลเสี่ยงสูงสุดตอนนี้
+          </span>
           <span className="legend-meta">
             {refreshedAt
               ? `อัปเดต ${formatTimeBKK(refreshedAt.toISOString())}`

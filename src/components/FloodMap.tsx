@@ -103,10 +103,15 @@ function formatTimeBKK(iso: string | null | undefined): string {
   }
 }
 
+// Descriptive only — the app explains the risk level, it does not issue
+// directives. Operational decisions belong to local authorities.
 function tierActionTH(tier: RiskTier): string {
-  if (tier === "severe") return "ถ้าฝนยังตกหนัก เตรียมย้ายของขึ้นที่สูง และสามารถอพยพได้ทันที";
-  if (tier === "high") return "ติดตามฝนต้นน้ำใกล้ชิด เตรียมแผนสำรอง";
-  if (tier === "watch") return "ระวังเมื่อฝนหนักต่อเนื่อง 1-3 ชั่วโมง";
+  if (tier === "severe")
+    return "ภูมิประเทศ + ดินอิ่มน้ำ + ฝนตอนนี้ รวมกันอยู่ในระดับเสี่ยงสูงสุดในขณะนี้";
+  if (tier === "high")
+    return "ความเสี่ยงสูงกว่าค่ากลางของพื้นที่ — ติดตามสถานการณ์ฝนต้นน้ำ";
+  if (tier === "watch")
+    return "ความเสี่ยงปานกลาง — เฝ้าระวังเมื่อฝนหนักต่อเนื่อง 1-3 ชั่วโมง";
   return "ความเสี่ยงต่ำในชั้นข้อมูลปัจจุบัน";
 }
 
@@ -117,10 +122,10 @@ const TIER_EN: Record<RiskTier, string> = {
   low: "Low",
 };
 const TIER_TH: Record<RiskTier, string> = {
-  severe: "อพยพได้ทันที",
-  high: "เฝ้าระวัง",
-  watch: "ระวังตามฤดู",
-  low: "ปลอดภัย",
+  severe: "เสี่ยงสูงสุด",
+  high: "เสี่ยงสูง",
+  watch: "เสี่ยงปานกลาง",
+  low: "เสี่ยงต่ำ",
 };
 const TIER_BG: Record<RiskTier, string> = {
   severe: "tb-severe",
@@ -163,6 +168,11 @@ function renderGridToDataURL(
   values: number[] | Float32Array,
   cap: number,
   ramp: (t: number) => [number, number, number, number],
+  /** Optional 0/1 mask (or any non-zero == inside). Cells where mask[i] is
+   *  falsy render fully transparent — used to clip overlays to the
+   *  Thailand AOI (the gridded data covers the bbox, which spills into
+   *  Myanmar/Laos). */
+  mask?: number[] | Float32Array | null,
 ): string | null {
   if (typeof document === "undefined") return null;
   const canvas = document.createElement("canvas");
@@ -173,6 +183,10 @@ function renderGridToDataURL(
   const img = ctx.createImageData(cols, rows);
   const buf = img.data;
   for (let i = 0; i < cols * rows; i++) {
+    if (mask && !mask[i]) {
+      buf[i * 4 + 3] = 0;
+      continue;
+    }
     const t = Math.min(1, Math.max(0, values[i] / cap));
     const c = ramp(t);
     buf[i * 4] = c[0];
@@ -457,12 +471,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       wetnessOverlayRef.current = null;
     }
     if (layerMode !== "wetness" || !grid) return;
+    const aoiMask = grid.static_norm; // 0 outside AOI (sampled from susceptibility.tif)
     const url = renderGridToDataURL(
       grid.cols,
       grid.rows,
       grid.rain_7d_mm,
       grid.wetness_norm_cap_mm,
       wetnessRampRGBA,
+      aoiMask,
     );
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;
@@ -483,14 +499,22 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     if (layerMode !== "live" || !grid) return;
     const live = computeLiveGrid(grid);
-    const url = renderGridToDataURL(grid.cols, grid.rows, live, 1.0, (t) => {
-      const c = riskRampColor(t);
-      const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
-      if (!m) return [0, 0, 0, 0];
-      const [r, g, b] = [+m[1], +m[2], +m[3]];
-      const a = Math.round(Math.min(220, 80 + 200 * t));
-      return [r, g, b, a];
-    });
+    const aoiMask = grid.static_norm;
+    const url = renderGridToDataURL(
+      grid.cols,
+      grid.rows,
+      live,
+      1.0,
+      (t) => {
+        const c = riskRampColor(t);
+        const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
+        if (!m) return [0, 0, 0, 0];
+        const [r, g, b] = [+m[1], +m[2], +m[3]];
+        const a = Math.round(Math.min(220, 80 + 200 * t));
+        return [r, g, b, a];
+      },
+      aoiMask,
+    );
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;
     liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
@@ -546,12 +570,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       precipOverlayRef.current = null;
     }
     if (!showPrecipOverlay || !grid) return;
+    const aoiMask = grid.static_norm;
     const url = renderGridToDataURL(
       grid.cols,
       grid.rows,
       grid.precip_now_mm_per_hr,
       grid.precip_now_norm_cap_mm_per_hr,
       precipRampRGBA,
+      aoiMask,
     );
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;

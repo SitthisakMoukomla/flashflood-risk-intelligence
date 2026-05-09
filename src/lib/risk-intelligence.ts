@@ -14,7 +14,7 @@ export const productCopy = {
   subtitle:
     "แผนที่คัดกรองตำบลเสี่ยงน้ำป่าใน 9 จังหวัดภาคเหนือ จาก hazard surface ที่คำนวณบน Google Earth Engine ทับด้วย rainfall trigger จาก radar API",
   disclaimer:
-    "MVP — decision-support map ไม่ใช่ประกาศภัยทางการ คะแนน per-ตำบลคำนวณจาก zonal stats ของ susceptibility raster (GEE export 100m, EPSG:4326)",
+    "แผนที่บอกระดับความเสี่ยงเชิงข้อมูล ไม่ใช่ประกาศภัยทางการ และไม่ใช่คำสั่งให้ดำเนินการใด ๆ การตัดสินใจเชิงปฏิบัติเป็นของหน่วยงานท้องถิ่น",
   region: "ภาคเหนือ 9 จังหวัด",
   unitName: "ตำบล",
   unitCount: 663,
@@ -30,25 +30,25 @@ export const riskMeta: Record<
   { label: string; color: string; minNorm: number; tone: string }
 > = {
   severe: {
-    label: "Severe",
+    label: "เสี่ยงสูงสุด",
     color: "#d73027",
     minNorm: 0.55,
-    tone: "ตำบลที่อยู่ใน p95 บนสุดของ AOI — เฝ้าระวังเป็นลำดับแรก",
+    tone: "ตำบลที่อยู่ใน p95 บนสุดของ AOI — บอกระดับความเสี่ยง ไม่ใช่ประกาศภัย",
   },
   high: {
-    label: "High",
+    label: "เสี่ยงสูง",
     color: "#fdae61",
     minNorm: 0.4,
-    tone: "ความเสี่ยงสูงกว่าค่ากลาง — ติดตามเมื่อฝนสะสมเข้าพื้นที่",
+    tone: "ความเสี่ยงสูงกว่าค่ากลางของพื้นที่",
   },
   watch: {
-    label: "Watch",
+    label: "เสี่ยงปานกลาง",
     color: "#fee08b",
     minNorm: 0.2,
-    tone: "ความเสี่ยงปานกลาง — เฝ้าระวังตามฤดูกาล",
+    tone: "ความเสี่ยงปานกลางตามฤดูกาล",
   },
   low: {
-    label: "Low",
+    label: "เสี่ยงต่ำ",
     color: "#1a9850",
     minNorm: 0,
     tone: "ความเสี่ยงต่ำในชั้นข้อมูลปัจจุบัน",

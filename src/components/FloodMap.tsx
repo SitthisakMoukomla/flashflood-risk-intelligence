@@ -550,19 +550,38 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       features: rows.map((r) => r.feature),
     };
 
+    const rowByGid = new Map(rows.map((r) => [r.feature.properties.GID_3, r]));
+
     polyLayerRef.current = L.geoJSON(fc as never, {
       style: (feature) => {
-        const isSelected = feature?.properties?.GID_3 === selectedGid;
+        const gid = feature?.properties?.GID_3 as string | undefined;
+        const isSelected = gid === selectedGid;
         if (isSelected) {
           return {
             fillOpacity: 0.16,
             fillColor: "#ffffff",
             color: "#ffffff",
-            weight: 2.4,
-            opacity: 0.9,
+            weight: 2.6,
+            opacity: 0.95,
           };
         }
-        return { fillOpacity: 0, color: "transparent", weight: 0, opacity: 0 };
+        // Tier-coloured outlines — severe/high/watch get a thin glowing
+        // border so the user can see priority tambon even with all hazard
+        // rasters turned off. Low-tier polygons stay invisible to keep
+        // the map readable.
+        const row = gid ? rowByGid.get(gid) : undefined;
+        const tier = row?.liveTier ?? "low";
+        if (tier === "low") {
+          return { fillOpacity: 0, color: "transparent", weight: 0, opacity: 0 };
+        }
+        const color = riskMeta[tier].color;
+        const weight = tier === "severe" ? 1.6 : tier === "high" ? 1.2 : 0.9;
+        return {
+          fillOpacity: 0,
+          color,
+          weight,
+          opacity: tier === "severe" ? 0.95 : tier === "high" ? 0.85 : 0.7,
+        };
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties as TambonRow["feature"]["properties"];

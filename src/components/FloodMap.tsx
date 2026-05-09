@@ -3,13 +3,14 @@
 import {
   AlertTriangle,
   Building2,
+  ChevronDown,
   Droplets,
-  Layers,
-  LocateFixed,
+  Info,
   MapPin,
   Mountain,
   Radar,
   Search,
+  X,
 } from "lucide-react";
 import type * as Leaflet from "leaflet";
 import type { GeoJSON as LeafletGeoJSON } from "leaflet";
@@ -18,6 +19,7 @@ import {
   methodSteps,
   productCopy,
   riskMeta,
+  type RiskTier,
   type SourceNote,
   tierFromNorm,
 } from "@/lib/risk-intelligence";
@@ -35,6 +37,8 @@ import {
   type WetnessPayload,
 } from "@/lib/tambon";
 
+// ─── Types ──────────────────────────────────────────────────────
+
 type FloodMapProps = {
   copy: typeof productCopy;
   sources: SourceNote[];
@@ -49,7 +53,7 @@ type RainLayerPayload = {
 
 type StaticOverlayMeta = {
   generated_at: string;
-  bbox: [number, number, number, number]; // west, south, east, north
+  bbox: [number, number, number, number];
   width: number;
   height: number;
   norm_low: number;
@@ -58,11 +62,15 @@ type StaticOverlayMeta = {
 
 type BuildingsOverlayMeta = {
   generated_at: string;
-  grid_bbox: [number, number, number, number]; // west, south, east, north
+  grid_bbox: [number, number, number, number];
   rows: number;
   cols: number;
   total_buildings: number;
 };
+
+type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
+
+// ─── Helpers ────────────────────────────────────────────────────
 
 const PROVINCE_NAMES: Record<string, string> = {
   ChiangMai: "เชียงใหม่",
@@ -75,33 +83,57 @@ const PROVINCE_NAMES: Record<string, string> = {
   Phrae: "แพร่",
   Uttaradit: "อุตรดิตถ์",
 };
-
-function thaiName(slug: string): string {
-  return PROVINCE_NAMES[slug] ?? slug;
-}
+const thaiName = (slug: string) => PROVINCE_NAMES[slug] ?? slug;
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("th-TH").format(value);
 }
 
-function formatDate(value: string | null | undefined): string {
-  if (!value) return "—";
+function formatTimeBKK(iso: string | null | undefined): string {
+  if (!iso) return "—";
   try {
     return new Intl.DateTimeFormat("th-TH", {
-      dateStyle: "medium",
-      timeStyle: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
       timeZone: "Asia/Bangkok",
-    }).format(new Date(value));
+    }).format(new Date(iso));
   } catch {
     return "—";
   }
 }
 
-function scoreOfRow(row: TambonRow, mode: LayerMode): number {
-  if (mode === "wetness") return row.wetnessNorm;
-  if (mode === "live") return row.liveNorm;
-  return row.staticNorm;
+function tierActionTH(tier: RiskTier): string {
+  if (tier === "severe") return "ถ้าฝนยังตกหนัก เตรียมย้ายของขึ้นที่สูง และสามารถอพยพได้ทันที";
+  if (tier === "high") return "ติดตามฝนต้นน้ำใกล้ชิด เตรียมแผนสำรอง";
+  if (tier === "watch") return "ระวังเมื่อฝนหนักต่อเนื่อง 1-3 ชั่วโมง";
+  return "ความเสี่ยงต่ำในชั้นข้อมูลปัจจุบัน";
 }
+
+const TIER_EN: Record<RiskTier, string> = {
+  severe: "Severe",
+  high: "High",
+  watch: "Watch",
+  low: "Low",
+};
+const TIER_TH: Record<RiskTier, string> = {
+  severe: "อพยพได้ทันที",
+  high: "เฝ้าระวัง",
+  watch: "ระวังตามฤดู",
+  low: "ปลอดภัย",
+};
+const TIER_BG: Record<RiskTier, string> = {
+  severe: "tb-severe",
+  high: "tb-high",
+  watch: "tb-watch",
+  low: "tb-low",
+};
+const TIER_PILL: Record<RiskTier, string> = {
+  severe: "tier-severe",
+  high: "tier-high",
+  watch: "tier-watch",
+  low: "tier-low",
+};
 
 function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
   let inside = false;
@@ -110,47 +142,25 @@ function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
     const yi = ring[i][1];
     const xj = ring[j][0];
     const yj = ring[j][1];
-    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
+    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
   }
   return inside;
 }
-
 function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): boolean {
   const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
   for (const poly of polys) {
     if (!pointInRing(lng, lat, poly[0])) continue;
     let inHole = false;
-    for (let i = 1; i < poly.length; i++) {
-      if (pointInRing(lng, lat, poly[i])) {
-        inHole = true;
-        break;
-      }
-    }
+    for (let i = 1; i < poly.length; i++) if (pointInRing(lng, lat, poly[i])) { inHole = true; break; }
     if (!inHole) return true;
   }
   return false;
 }
 
-function tierActionTH(tier: "severe" | "high" | "watch" | "low"): string {
-  switch (tier) {
-    case "severe":
-      return "เตรียมย้ายของขึ้นที่สูง พร้อมอพยพได้ทันทีถ้าฝนยังหนัก";
-    case "high":
-      return "ติดตามฝนต้นน้ำใกล้ชิด เตรียมแผนสำรอง";
-    case "watch":
-      return "ระวังเมื่อฝนหนักต่อเนื่อง 1-3 ชั่วโมง";
-    case "low":
-      return "ความเสี่ยงต่ำในชั้นข้อมูลปัจจุบัน";
-  }
-}
-
-/** Render a flat grid of values to a data URL. Returns null if no map context. */
 function renderGridToDataURL(
   cols: number,
   rows: number,
-  values: number[],
+  values: number[] | Float32Array,
   cap: number,
   ramp: (t: number) => [number, number, number, number],
 ): string | null {
@@ -174,6 +184,21 @@ function renderGridToDataURL(
   return canvas.toDataURL();
 }
 
+function scoreOfRow(row: TambonRow, mode: LayerMode): number {
+  if (mode === "wetness") return row.wetnessNorm;
+  if (mode === "live") return row.liveNorm;
+  return row.staticNorm;
+}
+
+// ─── Inline glyph for tier badge (visual is an inset !/·/✓) ─────
+function tierGlyph(tier: RiskTier): string {
+  if (tier === "severe" || tier === "high") return "!";
+  if (tier === "watch") return "·";
+  return "✓";
+}
+
+// ─── Main component ─────────────────────────────────────────────
+
 export function FloodMap({ copy, sources }: FloodMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
@@ -192,20 +217,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [staticMeta, setStaticMeta] = useState<StaticOverlayMeta | null>(null);
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
+
   const [layerMode, setLayerMode] = useState<LayerMode>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showPrecipOverlay, setShowPrecipOverlay] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
-  const [geoStatus, setGeoStatus] = useState<"idle" | "asking" | "granted" | "denied" | "unsupported" | "outside">("idle");
-  const [provinceFilter, setProvinceFilter] = useState<string>("");
-  const [query, setQuery] = useState("");
+  const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
+  const [searchQ, setSearchQ] = useState("");
+
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [methodOpen, setMethodOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 1) Load static data
+  // 1) Data load
   useEffect(() => {
     let active = true;
     (async () => {
@@ -219,38 +247,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         if (!vrRes.ok) throw new Error(`village_risk.geojson ${vrRes.status}`);
         const fc = (await vrRes.json()) as TambonCollection;
         if (active) setTambonFC(fc);
-        if (wRes.ok) {
-          const w = (await wRes.json()) as WetnessPayload;
-          if (active) setWetness(w);
-        }
-        if (gRes.ok) {
-          const g = (await gRes.json()) as WetnessGrid;
-          if (active) setGrid(g);
-        }
-        if (sRes.ok) {
-          const m = (await sRes.json()) as StaticOverlayMeta;
-          if (active) setStaticMeta(m);
-        }
+        if (wRes.ok && active) setWetness((await wRes.json()) as WetnessPayload);
+        if (gRes.ok && active) setGrid((await gRes.json()) as WetnessGrid);
+        if (sRes.ok && active) setStaticMeta((await sRes.json()) as StaticOverlayMeta);
         try {
           const bRes = await fetch("/data/buildings_density_meta.json");
-          if (bRes.ok && active) {
-            setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
-          }
+          if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
         } catch {
-          /* buildings overlay is optional */
+          /* optional */
         }
       } catch (e) {
         if (active) setLoadError(e instanceof Error ? e.message : "load failed");
       }
-
       try {
         const r = await fetch("/api/rainviewer", { cache: "no-store" });
-        if (r.ok) {
-          const payload = (await r.json()) as RainLayerPayload;
-          if (active) setRainLayer(payload);
-        }
+        if (r.ok && active) setRainLayer((await r.json()) as RainLayerPayload);
       } catch {
-        /* silent — radar is optional */
+        /* radar optional */
       }
     })();
     return () => {
@@ -258,7 +271,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     };
   }, []);
 
-  // 1b) Geolocation on first mount
+  // 2) Geolocation
   useEffect(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("unsupported");
@@ -275,71 +288,58 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     );
   }, []);
 
-  // 2) Build rows from data
+  // 3) Build tambon rows
   const rows = useMemo(
     () => (tambonFC ? buildTambonRows(tambonFC, wetness, grid) : []),
     [tambonFC, wetness, grid],
   );
 
-  const provinces = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of rows) set.add(r.feature.properties.NAME_1);
-    return [...set].sort();
-  }, [rows]);
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => scoreOfRow(b, layerMode) - scoreOfRow(a, layerMode)),
+    [rows, layerMode],
+  );
 
-  const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => scoreOfRow(b, layerMode) - scoreOfRow(a, layerMode));
-  }, [rows, layerMode]);
-
-  const filteredRows = useMemo(() => {
-    const q = query.trim().toLocaleLowerCase("th-TH");
-    return sortedRows.filter((row) => {
-      const p = row.feature.properties;
-      if (provinceFilter && p.NAME_1 !== provinceFilter) return false;
-      if (q) {
-        const hay = `${p.NAME_3} ${p.NAME_2} ${p.NAME_1} ${thaiName(p.NAME_1)}`.toLocaleLowerCase("th-TH");
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [sortedRows, provinceFilter, query]);
-
-  const selectedRow = useMemo(() => {
-    if (!selectedGid) return sortedRows[0] ?? null;
-    return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? sortedRows[0] ?? null;
-  }, [rows, sortedRows, selectedGid]);
-
-  // Find which tambon contains the user's location.
   const userRow = useMemo(() => {
     if (!userLoc || rows.length === 0) return null;
     const [lng, lat] = userLoc;
-    for (const row of rows) {
-      if (pointInGeom(lng, lat, row.feature.geometry)) return row;
-    }
+    for (const row of rows) if (pointInGeom(lng, lat, row.feature.geometry)) return row;
     return null;
   }, [userLoc, rows]);
 
-  // Update geo status if user is outside the AOI.
   useEffect(() => {
     if (geoStatus === "granted" && userLoc && rows.length > 0 && !userRow) {
       setGeoStatus("outside");
     }
   }, [geoStatus, userLoc, rows.length, userRow]);
 
-  const totals = useMemo(() => {
-    let severe = 0;
-    let high = 0;
-    let buildings = 0;
-    for (const r of rows) {
-      const t = layerMode === "live" ? r.liveTier : r.tier;
-      if (t === "severe") severe++;
-      else if (t === "high") high++;
-      buildings += r.feature.properties.cells;
-    }
-    return { severe, high, buildings };
-  }, [rows, layerMode]);
+  // Auto-select user's tambon when first found
+  useEffect(() => {
+    if (userRow && !selectedGid) setSelectedGid(userRow.feature.properties.GID_3);
+  }, [userRow, selectedGid]);
 
-  // 3) Initialize map once
+  const selectedRow = useMemo(() => {
+    if (!selectedGid) return userRow ?? sortedRows[0] ?? null;
+    return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? userRow ?? sortedRows[0] ?? null;
+  }, [rows, sortedRows, selectedGid, userRow]);
+
+  const heroRow = userRow ?? selectedRow;
+  const heroTier: RiskTier = heroRow?.liveTier ?? "low";
+  const isHighOrSevere = heroTier === "high" || heroTier === "severe";
+
+  // Search results (only when query)
+  const searchResults = useMemo(() => {
+    const q = searchQ.trim().toLocaleLowerCase("th-TH");
+    if (!q) return [];
+    return rows
+      .filter((r) => {
+        const p = r.feature.properties;
+        const hay = `${p.NAME_3} ${p.NAME_2} ${p.NAME_1} ${thaiName(p.NAME_1)}`.toLocaleLowerCase("th-TH");
+        return hay.includes(q);
+      })
+      .slice(0, 8);
+  }, [rows, searchQ]);
+
+  // ─── Map setup ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -348,7 +348,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       if (cancelled) return;
       leafletRef.current = L;
       const map = L.map(mapElementRef.current, {
-        center: [18.7, 99.5],
+        center: [18.7, 99.8],
         zoom: 7,
         zoomControl: false,
         preferCanvas: true,
@@ -366,113 +366,71 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       mapRef.current?.remove();
       mapRef.current = null;
       polyLayerRef.current = null;
-      rainLayerRef.current = null;
       setIsMapReady(false);
     };
   }, []);
 
-  // 4) Render polygons when rows/mode/filters change
+  // Tambon click layer (transparent — only for hover/click hit testing)
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    if (!L || !map || !isMapReady || filteredRows.length === 0) return;
+    if (!L || !map || !isMapReady || rows.length === 0) return;
 
     if (polyLayerRef.current) {
       polyLayerRef.current.remove();
       polyLayerRef.current = null;
     }
 
-    const rowByGid = new Map(filteredRows.map((r) => [r.feature.properties.GID_3, r]));
     const fc: GeoJSON.FeatureCollection = {
       type: "FeatureCollection",
-      features: filteredRows.map((r) => r.feature),
+      features: rows.map((r) => r.feature),
     };
 
     polyLayerRef.current = L.geoJSON(fc as never, {
       style: (feature) => {
-        const gid = feature?.properties?.GID_3 as string | undefined;
-        const row = gid ? rowByGid.get(gid) : undefined;
-        if (!row) return {};
-        const isSelected = row.feature.properties.GID_3 === selectedGid;
-        // All three modes use raster overlays. Polygons stay invisible by
-        // default and only appear when the user hovers or selects one — they
-        // still receive click events because Leaflet canvas hit-tests by
-        // geometry, not painted pixels.
+        const isSelected = feature?.properties?.GID_3 === selectedGid;
         if (isSelected) {
           return {
-            fillOpacity: 0.18,
+            fillOpacity: 0.16,
             fillColor: "#ffffff",
             color: "#ffffff",
-            weight: 2.5,
-            opacity: 0.95,
+            weight: 2.4,
+            opacity: 0.9,
           };
         }
-        return {
-          fillOpacity: 0,
-          fillColor: "transparent",
-          color: "transparent",
-          weight: 0,
-          opacity: 0,
-        };
+        return { fillOpacity: 0, color: "transparent", weight: 0, opacity: 0 };
       },
       onEachFeature: (feature, layer) => {
-        const gid = feature?.properties?.GID_3 as string | undefined;
-        const row = gid ? rowByGid.get(gid) : undefined;
-        if (!row) return;
-        const p = row.feature.properties;
-        const pathLayer = layer as Leaflet.Path & { feature?: { properties?: { GID_3?: string } } };
+        const p = feature.properties as TambonRow["feature"]["properties"];
+        const path = layer as Leaflet.Path & { feature?: { properties?: { GID_3?: string } } };
         layer.on("click", () => {
           setSelectedGid(p.GID_3);
-          map.flyTo(
-            (layer as Leaflet.GeoJSON).getBounds().getCenter(),
-            Math.max(map.getZoom(), 9),
-            { duration: 0.6 },
-          );
+          setDrawerOpen(true);
         });
-        // Hover highlight — polygons are hidden in every mode now, so always
-        // light up the boundary on mouseover for orientation.
         layer.on("mouseover", () => {
-          if (pathLayer.feature?.properties?.GID_3 === selectedGid) return;
-          pathLayer.setStyle({
-            color: "rgba(255,255,255,0.65)",
-            weight: 1.2,
+          if (path.feature?.properties?.GID_3 === selectedGid) return;
+          path.setStyle({
+            color: "rgba(255,255,255,0.55)",
+            weight: 1,
             opacity: 1,
-            fillOpacity: 0.05,
+            fillOpacity: 0.04,
             fillColor: "#ffffff",
           });
         });
         layer.on("mouseout", () => {
-          if (pathLayer.feature?.properties?.GID_3 === selectedGid) return;
+          if (path.feature?.properties?.GID_3 === selectedGid) return;
           polyLayerRef.current?.resetStyle(layer as Leaflet.Path);
         });
-        const tooltip = `<b>${p.NAME_3}</b> · ${p.NAME_2}<br/>${thaiName(p.NAME_1)}`;
-        layer.bindTooltip(tooltip, { direction: "top", sticky: true, opacity: 0.9 });
+        layer.bindTooltip(`<b>${p.NAME_3}</b> · ${p.NAME_2}<br/>${thaiName(p.NAME_1)}`, {
+          direction: "top",
+          sticky: true,
+          opacity: 0.9,
+        });
       },
     }).addTo(map);
-  }, [isMapReady, filteredRows, layerMode, selectedGid]);
+  }, [isMapReady, rows, selectedGid]);
 
-  // 5) Rain overlay (radar)
-  useEffect(() => {
-    const L = leafletRef.current;
-    const map = mapRef.current;
-    if (!L || !map || !isMapReady) return;
-    if (rainLayerRef.current) {
-      rainLayerRef.current.removeFrom(map);
-      rainLayerRef.current = null;
-    }
-    if (showRainOverlay && rainLayer?.tileUrl) {
-      rainLayerRef.current = L.tileLayer(rainLayer.tileUrl, {
-        opacity: 0.55,
-        zIndex: 450,
-        // RainViewer free tiles only render up to z10 — let Leaflet upsample beyond.
-        maxNativeZoom: 10,
-        maxZoom: 18,
-        attribution: "RainViewer",
-      }).addTo(map);
-    }
-  }, [isMapReady, showRainOverlay, rainLayer]);
-
-  // 6a) Static hazard raster overlay (the GEE susceptibility export, downsampled)
+  // Static raster overlay
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -486,11 +444,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     staticOverlayRef.current = L.imageOverlay("/data/static_overlay.png", [[s, w], [n, e]], {
       opacity: 0.78,
       interactive: false,
-      className: "static-overlay",
     }).addTo(map);
   }, [isMapReady, layerMode, staticMeta]);
 
-  // 6b) Wetness raster overlay (continuous field, not following polygons)
+  // Wetness raster overlay
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -512,12 +469,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     wetnessOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
       opacity: 0.7,
       interactive: false,
-      // CSS image-rendering: auto allows browser bilinear smoothing when scaled.
-      className: "wetness-overlay",
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
-  // 6c) Live combined risk raster (computed per-cell from grid + susceptibility)
+  // Live combined raster
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -528,31 +483,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     if (layerMode !== "live" || !grid) return;
     const live = computeLiveGrid(grid);
-    const url = renderGridToDataURL(
-      grid.cols,
-      grid.rows,
-      Array.from(live),
-      1.0,
-      (t) => {
-        const c = riskRampColor(t);
-        // riskRampColor returns "rgb(r,g,b)" — parse and add alpha
-        const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return [0, 0, 0, 0];
-        const [r, g, b] = [+m[1], +m[2], +m[3]];
-        const a = Math.round(Math.min(220, 80 + 200 * t));
-        return [r, g, b, a];
-      },
-    );
+    const url = renderGridToDataURL(grid.cols, grid.rows, live, 1.0, (t) => {
+      const c = riskRampColor(t);
+      const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
+      if (!m) return [0, 0, 0, 0];
+      const [r, g, b] = [+m[1], +m[2], +m[3]];
+      const a = Math.round(Math.min(220, 80 + 200 * t));
+      return [r, g, b, a];
+    });
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;
     liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
       opacity: 0.78,
       interactive: false,
-      className: "live-overlay",
     }).addTo(map);
   }, [isMapReady, layerMode, grid]);
 
-  // 6d) Buildings density overlay (Google Open Buildings v3 — 5.6M หลัง)
+  // Buildings density overlay
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -566,11 +513,30 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
       interactive: false,
-      className: "buildings-overlay",
     }).addTo(map);
   }, [isMapReady, showBuildings, buildingsMeta]);
 
-  // 7) Live precip overlay (Open-Meteo nowcast, mm/hr)
+  // Radar overlay
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (rainLayerRef.current) {
+      rainLayerRef.current.removeFrom(map);
+      rainLayerRef.current = null;
+    }
+    if (showRainOverlay && rainLayer?.tileUrl) {
+      rainLayerRef.current = L.tileLayer(rainLayer.tileUrl, {
+        opacity: 0.55,
+        zIndex: 450,
+        maxNativeZoom: 10,
+        maxZoom: 18,
+        attribution: "RainViewer",
+      }).addTo(map);
+    }
+  }, [isMapReady, showRainOverlay, rainLayer]);
+
+  // Precip-now overlay
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -592,520 +558,764 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     precipOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
       opacity: 0.75,
       interactive: false,
-      className: "precip-overlay",
     }).addTo(map);
   }, [isMapReady, showPrecipOverlay, grid]);
 
-  const fitNorth = () => {
-    mapRef.current?.flyTo([18.7, 99.5], 7, { duration: 0.7 });
+  // ─── Actions ─────────────────────────────────────────────────
+  const flyToTambon = (gid: string) => {
+    setSelectedGid(gid);
+    setDrawerOpen(true);
+    const map = mapRef.current;
+    const layer = polyLayerRef.current;
+    if (!map || !layer) return;
+    layer.eachLayer((l) => {
+      const fid = (l as unknown as { feature?: { properties?: { GID_3?: string } } }).feature?.properties?.GID_3;
+      if (fid === gid) {
+        map.flyTo((l as Leaflet.GeoJSON).getBounds().getCenter(), 11, { duration: 0.6 });
+      }
+    });
   };
 
-  const renderRowItem = (row: TambonRow) => {
-    const p = row.feature.properties;
-    const tier = layerMode === "live" ? row.liveTier : row.tier;
-    const meta = riskMeta[tier];
-    const score = Math.round(scoreOfRow(row, layerMode) * 100);
-    const isSelected = p.GID_3 === selectedGid;
-    return (
-      <button
-        key={p.GID_3}
-        className={`w-full rounded-lg border p-3 text-left transition ${
-          isSelected
-            ? "border-[#40e0bd]/70 bg-[#40e0bd]/10"
-            : "border-white/10 bg-white/[0.035] hover:border-white/25"
-        }`}
-        onClick={() => {
-          setSelectedGid(p.GID_3);
-          const map = mapRef.current;
-          if (map) {
-            // Move to the polygon's bounds
-            const layer = polyLayerRef.current;
-            if (layer) {
-              layer.eachLayer((l) => {
-                const fid = (l as unknown as { feature?: { properties?: { GID_3?: string } } })
-                  .feature?.properties?.GID_3;
-                if (fid === p.GID_3) {
-                  map.flyTo((l as Leaflet.GeoJSON).getBounds().getCenter(), 10, { duration: 0.6 });
-                }
-              });
-            }
-          }
+  // Top-N risk list for drawer
+  const topRiskList = useMemo(() => sortedRows.slice(0, 5), [sortedRows]);
+
+  // ─── Render ──────────────────────────────────────────────────
+  return (
+    <div className="ff-shell">
+      <div className="ff-map" ref={mapElementRef} />
+
+      {/* Top hero ribbon */}
+      <HeroRibbon
+        row={heroRow}
+        userRow={userRow}
+        status={geoStatus}
+        searchQ={searchQ}
+        onSearchChange={setSearchQ}
+        searchResults={searchResults}
+        onSearchPick={(gid) => {
+          setSearchQ("");
+          flyToTambon(gid);
+        }}
+        loadError={loadError}
+        copy={copy}
+      />
+
+      {/* Left mode picker + layer toggles */}
+      <div
+        className="desktop-only"
+        style={{
+          position: "absolute",
+          top: 88,
+          left: 16,
+          width: 268,
+          zIndex: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
         }}
       >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate font-semibold text-white">{p.NAME_3}</div>
-            <div className="mt-1 text-xs text-[#9fb7b3]">
-              {p.NAME_2} · {thaiName(p.NAME_1)}
-            </div>
-          </div>
-          <span
-            className="shrink-0 rounded-full px-2 py-1 text-xs font-semibold text-[#071318]"
-            style={{ background: meta.color }}
-          >
-            {score}
-          </span>
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-1 text-[11px] text-[#cfe2df]">
-          <span className="rounded-full bg-white/8 px-2 py-1 text-center">
-            ภัย {Math.round(row.staticNorm * 100)}
-          </span>
-          <span className="rounded-full bg-white/8 px-2 py-1 text-center">
-            ดิน {Math.round(row.wetnessNorm * 100)}
-          </span>
-          <span className="rounded-full bg-white/8 px-2 py-1 text-center">
-            live {Math.round(row.liveNorm * 100)}
-          </span>
-        </div>
-      </button>
-    );
-  };
-
-  return (
-    <section className="map-shell">
-      <div className="map-grid">
-        <aside className="side-panel flex min-h-0 flex-col p-5">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#40e0bd]">
-                MVP / 9 จังหวัดภาคเหนือ
-              </p>
-              <h1 className="text-2xl font-semibold leading-tight">{copy.title}</h1>
-              <p className="mt-3 text-sm leading-6 text-[#abc0bd]">{copy.subtitle}</p>
-            </div>
-            <button
-              aria-label="กลับมุมมองภาคเหนือ"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/5 text-[#dff8f2] transition hover:border-[#40e0bd]/60 hover:bg-[#40e0bd]/10"
-              onClick={fitNorth}
-              title="กลับมุมมองภาคเหนือ"
-            >
-              <LocateFixed size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-              <Mountain className="mb-3 text-[#40e0bd]" size={17} />
-              <div className="text-xl font-semibold">{rows.length}</div>
-              <div className="mt-1 text-[11px] leading-4 text-[#9fb7b3]">ตำบล</div>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-              <AlertTriangle className="mb-3 text-[#d73027]" size={17} />
-              <div className="text-xl font-semibold">{totals.severe}</div>
-              <div className="mt-1 text-[11px] leading-4 text-[#9fb7b3]">Severe</div>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-              <AlertTriangle className="mb-3 text-[#fdae61]" size={17} />
-              <div className="text-xl font-semibold">{totals.high}</div>
-              <div className="mt-1 text-[11px] leading-4 text-[#9fb7b3]">High</div>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[#9fb7b3]">
-                <Layers size={14} />
-                เลือกมุมมอง
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {(["live", "static", "wetness"] as LayerMode[]).map((mode) => {
-                  const meta = layerModes[mode];
-                  const Icon = mode === "wetness" ? Droplets : mode === "live" ? AlertTriangle : Mountain;
-                  return (
-                    <button
-                      key={mode}
-                      className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
-                        layerMode === mode
-                          ? "border-[#40e0bd]/70 bg-[#40e0bd]/12 text-white"
-                          : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
-                      }`}
-                      onClick={() => setLayerMode(mode)}
-                      title={meta.description}
-                    >
-                      <Icon size={13} />
-                      <span>{meta.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-[11px] leading-4 text-[#9fb7b3]">
-                {layerModes[layerMode].description}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
+        <div className="glass mode">
+          {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
+            const meta = layerModes[m];
+            const Icon = m === "live" ? AlertTriangle : m === "wetness" ? Droplets : Mountain;
+            return (
               <button
-                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
-                  showRainOverlay
-                    ? "border-[#40e0bd]/70 bg-[#40e0bd]/12 text-white"
-                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
-                } ${!rainLayer ? "cursor-not-allowed opacity-50" : ""}`}
-                disabled={!rainLayer}
-                onClick={() => setShowRainOverlay((v) => !v)}
-                title={rainLayer ? `radar ${formatDate(rainLayer.frameTime)}` : "ไม่มี radar tile"}
+                key={m}
+                className={`mode-item ${m === layerMode ? "active" : ""}`}
+                onClick={() => setLayerMode(m)}
               >
-                <Radar size={13} /> Radar
+                <span className="mi-glyph">
+                  <Icon size={20} strokeWidth={2} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="mi-label">{meta.label}</span>
+                  <span className="mi-desc">{meta.description}</span>
+                </span>
               </button>
-              <button
-                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
-                  showPrecipOverlay
-                    ? "border-[#fdae61]/70 bg-[#fdae61]/12 text-white"
-                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
-                } ${!grid ? "cursor-not-allowed opacity-50" : ""}`}
-                disabled={!grid}
-                onClick={() => setShowPrecipOverlay((v) => !v)}
-                title="Open-Meteo precip nowcast (mm/hr)"
-              >
-                <Droplets size={13} /> ฝน
-              </button>
-              <button
-                className={`flex h-10 items-center justify-center gap-1 rounded-lg border px-2 text-xs transition ${
-                  showBuildings
-                    ? "border-[#fdae61]/70 bg-[#fdae61]/12 text-white"
-                    : "border-white/10 bg-white/[0.03] text-[#b9cfcc] hover:border-white/25"
-                } ${!buildingsMeta ? "cursor-not-allowed opacity-50" : ""}`}
-                disabled={!buildingsMeta}
-                onClick={() => setShowBuildings((v) => !v)}
-                title={buildingsMeta ? `Open Buildings v3 — ${formatNumber(buildingsMeta.total_buildings)} หลัง` : "ไม่มี"}
-              >
-                <Building2 size={13} /> อาคาร
-              </button>
-            </div>
-
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#8da5a4]" size={16} />
-              <input
-                aria-label="ค้นหาตำบล"
-                className="h-11 w-full rounded-lg border border-white/10 bg-[#071318]/70 pl-10 pr-3 text-sm text-white outline-none transition placeholder:text-[#78928e] focus:border-[#40e0bd]/60"
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="ค้นหาตำบล / อำเภอ / จังหวัด"
-                value={query}
-              />
-            </label>
-
-            <select
-              aria-label="กรองจังหวัด"
-              className="h-10 w-full rounded-lg border border-white/10 bg-[#071318]/70 px-3 text-sm text-white outline-none focus:border-[#40e0bd]/60"
-              onChange={(e) => setProvinceFilter(e.target.value)}
-              value={provinceFilter}
-            >
-              <option value="">ทุกจังหวัด ({rows.length} ตำบล)</option>
-              {provinces.map((p) => (
-                <option key={p} value={p}>
-                  {thaiName(p)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mt-5 min-h-0 flex-1">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Ranked ตำบล</h2>
-              <span className="rounded-full bg-white/8 px-2 py-1 text-xs text-[#b9cfcc]">
-                {filteredRows.length}
-              </span>
-            </div>
-            <div className="scroll-area space-y-2 pr-1">
-              {filteredRows.slice(0, 200).map(renderRowItem)}
-              {filteredRows.length > 200 ? (
-                <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-center text-xs text-[#9fb7b3]">
-                  + {filteredRows.length - 200} ตำบลถัดไป — ใช้ filter เพื่อดูรายละเอียด
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </aside>
-
-        <div className="leaflet-stage">
-          <div className="leaflet-map" ref={mapElementRef} />
-          {loadError ? (
-            <div className="absolute inset-x-0 top-0 z-10 m-4 rounded-lg border border-[#ff6b6b]/40 bg-[#220a0a]/95 p-3 text-sm text-[#ffd9d9]">
-              โหลดข้อมูลไม่สำเร็จ: {loadError}
-            </div>
-          ) : (
-            <HeroAlert
-              row={userRow}
-              status={geoStatus}
-              onLocate={() => {
-                if (!userRow) return;
-                const map = mapRef.current;
-                if (!map) return;
-                const layer = polyLayerRef.current;
-                if (layer) {
-                  layer.eachLayer((l) => {
-                    const fid = (l as unknown as { feature?: { properties?: { GID_3?: string } } })
-                      .feature?.properties?.GID_3;
-                    if (fid === userRow.feature.properties.GID_3) {
-                      map.flyTo((l as Leaflet.GeoJSON).getBounds().getCenter(), 11, { duration: 0.7 });
-                      setSelectedGid(fid ?? null);
-                    }
-                  });
-                }
-              }}
-            />
-          )}
-          <div className="floating-status">
-            <div className="flex min-w-0 items-center gap-3">
-              <div
-                className="grid h-9 w-9 place-items-center rounded-lg"
-                style={{ background: `${riskMeta.severe.color}20`, color: riskMeta.severe.color }}
-              >
-                <Mountain size={18} />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">{layerModes[layerMode].label}</div>
-                <div className="truncate text-xs text-[#9fb7b3]">
-                  {wetness ? `ดินอิ่มน้ำ ${wetness.window_days} วัน · ${formatDate(wetness.generated_at)}` : "no wetness"}
-                  {rainLayer ? ` · radar ${formatDate(rainLayer.frameTime)}` : ""}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(["severe", "high", "watch", "low"] as const).map((tier) => (
-                <div className="flex items-center gap-1 text-xs text-[#d8eee9]" key={tier}>
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: riskMeta[tier].color }} />
-                  {riskMeta[tier].label}
-                </div>
-              ))}
-            </div>
-          </div>
+            );
+          })}
         </div>
 
-        <aside className="detail-panel p-5">
-          {!selectedRow ? (
-            <div className="flex h-full items-center justify-center text-center text-sm text-[#9fb7b3]">
-              {rows.length === 0 ? "กำลังโหลดข้อมูลตำบล..." : "เลือกตำบลจากรายการหรือบนแผนที่"}
-            </div>
-          ) : (
-            <SelectedDetail row={selectedRow} sources={sources} />
-          )}
-        </aside>
+        <div className="glass" style={{ padding: 6 }}>
+          <div className="caps" style={{ padding: "6px 10px 4px" }}>
+            เลเยอร์เพิ่มเติม
+          </div>
+          <LayerSwitch
+            on={showRainOverlay}
+            disabled={!rainLayer}
+            label="เรดาร์ฝน"
+            hint={rainLayer ? `RainViewer · ${formatTimeBKK(rainLayer.frameTime)}` : "ไม่มีข้อมูล"}
+            icon={<Radar size={18} strokeWidth={2} />}
+            onClick={() => setShowRainOverlay((v) => !v)}
+          />
+          <LayerSwitch
+            on={showPrecipOverlay}
+            disabled={!grid}
+            label="ฝนตอนนี้"
+            hint="พื้นที่ฝนกำลังตก · Open-Meteo"
+            icon={<Droplets size={18} strokeWidth={2} />}
+            onClick={() => setShowPrecipOverlay((v) => !v)}
+          />
+          <LayerSwitch
+            on={showBuildings}
+            disabled={!buildingsMeta}
+            label="บ้านเรือน"
+            hint={
+              buildingsMeta
+                ? `${formatNumber(buildingsMeta.total_buildings)} หลัง · Open Buildings v3`
+                : "ไม่มีข้อมูล"
+            }
+            icon={<Building2 size={18} strokeWidth={2} />}
+            onClick={() => setShowBuildings((v) => !v)}
+          />
+        </div>
       </div>
-    </section>
+
+      {/* Right drawer */}
+      {drawerOpen && selectedRow ? (
+        <Drawer
+          row={selectedRow}
+          isUser={selectedRow === userRow}
+          onClose={() => setDrawerOpen(false)}
+          methodOpen={methodOpen}
+          onToggleMethod={() => setMethodOpen((v) => !v)}
+          methodSteps={methodSteps}
+          sources={sources}
+          topRiskList={topRiskList}
+          onPickRow={(gid) => flyToTambon(gid)}
+        />
+      ) : null}
+
+      {/* Bottom legend */}
+      <div
+        style={{
+          position: "absolute",
+          left: 16,
+          right: drawerOpen ? 412 : 16,
+          bottom: 16,
+          zIndex: 16,
+        }}
+        className="desktop-only"
+      >
+        <div className="glass legend">
+          {(["low", "watch", "high", "severe"] as RiskTier[]).map((t) => (
+            <span key={t} className="legend-chip">
+              <span className="sw" style={{ background: riskMeta[t].color }} />
+              {TIER_TH[t]}
+            </span>
+          ))}
+          <span className="legend-meta">
+            {wetness ? `ดิน ${formatTimeBKK(wetness.generated_at)}` : "—"}
+            {rainLayer ? ` · เรดาร์ ${formatTimeBKK(rainLayer.frameTime)}` : ""}
+          </span>
+        </div>
+      </div>
+
+      {/* Mobile floating mode picker (compact) */}
+      <div
+        className="mobile-only"
+        style={{ position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 17, display: "flex", flexDirection: "column", gap: 8 }}
+      >
+        <div className="glass" style={{ display: "flex", padding: 4 }}>
+          {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
+            const meta = layerModes[m];
+            return (
+              <button
+                key={m}
+                className={`mode-item ${m === layerMode ? "active" : ""}`}
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  padding: "8px 4px",
+                  fontSize: 12,
+                  color: m === layerMode ? "var(--ink)" : "var(--ink-3)",
+                }}
+                onClick={() => setLayerMode(m)}
+              >
+                <span className="mi-label" style={{ fontSize: 12 }}>
+                  {meta.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function HeroAlert({
+// ─── HeroRibbon ──────────────────────────────────────────────────
+
+function HeroRibbon({
   row,
+  userRow,
   status,
-  onLocate,
+  searchQ,
+  onSearchChange,
+  searchResults,
+  onSearchPick,
+  loadError,
+  copy,
 }: {
   row: TambonRow | null;
-  status: "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
-  onLocate: () => void;
+  userRow: TambonRow | null;
+  status: GeoStatus;
+  searchQ: string;
+  onSearchChange: (v: string) => void;
+  searchResults: TambonRow[];
+  onSearchPick: (gid: string) => void;
+  loadError: string | null;
+  copy: typeof productCopy;
 }) {
-  if (status === "asking" || status === "idle") return null;
-  if (status === "denied" || status === "unsupported" || status === "outside" || !row) {
-    const msg =
-      status === "denied"
-        ? "ไม่ได้รับอนุญาตให้เข้าถึงตำแหน่ง — เลือกตำบลของคุณจากรายการทางซ้าย"
-        : status === "unsupported"
-          ? "เบราว์เซอร์ไม่รองรับการระบุตำแหน่ง — เลือกตำบลของคุณจากรายการทางซ้าย"
-          : "คุณอยู่นอกเขต 9 จังหวัดภาคเหนือ — เลือกตำบลที่ต้องการดู";
-    return (
-      <div className="absolute left-3 right-3 top-3 z-[8] rounded-lg border border-white/12 bg-[#0b1d22]/85 px-4 py-2.5 text-xs text-[#cfe2df] backdrop-blur-md">
-        {msg}
-      </div>
-    );
-  }
-  const tier = row.liveTier;
-  const meta = riskMeta[tier];
-  const p = row.feature.properties;
+  const tier: RiskTier = row?.liveTier ?? "low";
   const action = tierActionTH(tier);
-  const pulse = tier === "severe" || tier === "high";
+  const pulseClass = tier === "high" || tier === "severe" ? "pulse" : "";
+  const isUser = row && userRow && row.feature.properties.GID_3 === userRow.feature.properties.GID_3;
+  const score = row ? Math.round(row.liveNorm * 100) : 0;
+  const liveLabel = isUser ? "บ้านคุณอยู่ที่" : "ตำบลที่เลือก";
+
+  const statusMsg =
+    status === "denied"
+      ? "ไม่ได้รับอนุญาตเข้าถึงตำแหน่ง"
+      : status === "unsupported"
+        ? "เบราว์เซอร์ไม่รองรับ GPS"
+        : status === "outside"
+          ? "อยู่นอก 9 จังหวัดภาคเหนือ"
+          : null;
+
   return (
     <div
-      className={`absolute left-3 right-3 top-3 z-[8] flex items-center gap-3 rounded-xl border bg-[#0b1d22]/92 px-4 py-3 backdrop-blur-md transition ${
-        pulse ? "animate-pulse-slow" : ""
-      }`}
-      style={{ borderColor: `${meta.color}66` }}
+      className={`hero hero-${tier} ${pulseClass}`}
+      style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 22, padding: "12px 16px" }}
     >
-      <div
-        className="grid h-12 w-12 shrink-0 place-items-center rounded-lg text-[#071318]"
-        style={{ background: meta.color }}
-      >
-        <span className="text-[15px] font-extrabold">
-          {Math.round(row.liveNorm * 100)}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className="text-[#9fb7b3]">บ้านคุณอยู่ใน</span>
-          <span className="font-semibold text-white">ต. {p.NAME_3}</span>
-          <span className="text-[#9fb7b3]">อ. {p.NAME_2}</span>
-          <span className="text-[#9fb7b3]">{thaiName(p.NAME_1)}</span>
-        </div>
-        <div className="mt-0.5 flex items-baseline gap-2 text-sm">
-          <span className="text-[#cfe2df]">ตอนนี้:</span>
-          <span className="font-bold" style={{ color: meta.color }}>
-            {meta.label}
-          </span>
-          <span className="hidden truncate text-xs text-[#abc0bd] sm:inline">— {action}</span>
-        </div>
-      </div>
-      <button
-        className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs text-[#dff8f2] transition hover:border-[#40e0bd]/60 hover:bg-[#40e0bd]/10"
-        onClick={onLocate}
-        title="ซูมไปบ้านคุณ"
-      >
-        ดูบนแผนที่
-      </button>
-    </div>
-  );
-}
-
-function SelectedDetail({ row, sources }: { row: TambonRow; sources: SourceNote[] }) {
-  const p = row.feature.properties;
-  const tier = row.tier;
-  const liveTier = row.liveTier;
-  return (
-    <div>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#f4b740]">
-            Evidence panel · ตำบล
-          </p>
-          <h2 className="text-2xl font-semibold">{p.NAME_3}</h2>
-          <p className="mt-2 text-sm text-[#abc0bd]">
-            {p.NAME_2} · {thaiName(p.NAME_1)} · อันดับที่ {p.rank}/663
-          </p>
-        </div>
-        <span
-          className="shrink-0 rounded-lg px-3 py-2 text-sm font-bold text-[#071318]"
-          style={{ background: riskMeta[liveTier].color }}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44 }}>
+        {/* Wordmark */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            paddingRight: 14,
+            borderRight: "1px solid var(--hairline-2)",
+          }}
         >
-          {riskMeta[liveTier].label}
-        </span>
-      </div>
+          <span style={{ width: 22, height: 22, color: "var(--accent)", display: "flex", flex: "none" }}>
+            <AlertTriangle size={22} strokeWidth={2.2} />
+          </span>
+          <span style={{ fontWeight: 700, letterSpacing: -0.2, fontSize: 14, whiteSpace: "nowrap" }}>
+            FLASHFLOOD
+            <span className="desktop-only" style={{ color: "var(--ink-3)", fontWeight: 400 }}>
+              {" "}· {copy.region}
+            </span>
+          </span>
+        </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-2">
-        <ScoreCard
-          label="Static hazard"
-          icon={<Mountain size={14} />}
-          score={Math.round(row.staticNorm * 100)}
-          color={riskMeta[tier].color}
-          sub={`p90 ${row.feature.properties.risk_p90.toFixed(2)}`}
-        />
-        <ScoreCard
-          label="Risk live"
-          icon={<Radar size={14} />}
-          score={Math.round(row.liveNorm * 100)}
-          color={riskMeta[liveTier].color}
-          sub={`tier ${riskMeta[liveTier].label}`}
-        />
-        <ScoreCard
-          label="ดินอิ่มน้ำ"
-          icon={<Droplets size={14} />}
-          score={Math.round(row.wetnessNorm * 100)}
-          color="#3b82f6"
-          sub={row.wetnessMm !== null ? `${row.wetnessMm.toFixed(0)} มม. / 7วัน` : "—"}
-        />
-        <ScoreCard
-          label="ฝนตอนนี้"
-          icon={<Droplets size={14} />}
-          score={Math.round(row.precipNorm * 100)}
-          color={row.precipMmPerHr > 0 ? "#fdae61" : "#5a7d7a"}
-          sub={`${row.precipMmPerHr.toFixed(1)} มม./ชม.`}
-        />
-      </div>
-
-      <div className="mt-5 space-y-3">
-        <section className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <MapPin size={15} /> Hazard breakdown
-          </h3>
-          <dl className="grid grid-cols-2 gap-2 text-xs">
-            <Field label="p90 hazard" value={p.risk_p90.toFixed(2)} />
-            <Field label="p95 hazard" value={p.risk_p95.toFixed(2)} />
-            <Field label="class ≥3" value={`${p.class_3plus_pct.toFixed(0)}%`} />
-            <Field label="ขนาด" value={`${formatNumber(p.cells)} cells`} />
-            {p.buildings !== undefined ? (
-              <Field
-                label="บ้านเรือน"
-                value={`${formatNumber(p.buildings)} หลัง`}
-              />
-            ) : null}
-            {p.building_area_km2 !== undefined && p.building_area_km2 > 0 ? (
-              <Field
-                label="พื้นที่อาคาร"
-                value={`${p.building_area_km2.toFixed(2)} กม²`}
-              />
-            ) : null}
-          </dl>
-          <p className="mt-3 text-[11px] leading-5 text-[#9fb7b3]">
-            {row.wetnessMm === null
-              ? "ดินอิ่มน้ำ: ไม่มีข้อมูลฝน 7 วันสำหรับตำบลนี้"
-              : `ฝนสะสม 7 วัน ${row.wetnessMm.toFixed(0)} มม. → ${(row.wetnessNorm * 100).toFixed(0)}/100 (cap 80 มม.)`}
-          </p>
-        </section>
-
-        <details className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-xs">
-          <summary className="cursor-pointer select-none font-semibold text-[#dff8f2]">
-            Method &amp; sources
-          </summary>
-          <div className="mt-3 space-y-2 leading-5 text-[#b9cfcc]">
-            {methodSteps.slice(0, 4).map((step, i) => (
-              <div className="flex gap-2" key={step}>
-                <span className="font-mono text-[#40e0bd]">{i + 1}</span>
-                <span>{step}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 space-y-2">
-            {sources.map((source) => (
-              <a
-                className="block text-[11px] text-[#9fb7b3] underline-offset-2 hover:text-white hover:underline"
-                href={source.href}
-                key={source.href}
-                rel="noreferrer"
-                target="_blank"
+        {/* Risk text + tier */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          {row ? (
+            <>
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  color: "var(--ink-2)",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                }}
               >
-                {source.label}
-              </a>
-            ))}
+                <MapPin size={14} style={{ color: "var(--accent)" }} />
+                {liveLabel}
+              </span>
+              <span style={{ fontSize: 15.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+                ตำบล{row.feature.properties.NAME_3}
+                <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
+                  {" "}อ.{row.feature.properties.NAME_2} · จ.{thaiName(row.feature.properties.NAME_1)}
+                </span>
+              </span>
+              <span className={`tier ${TIER_PILL[tier]}`}>
+                ตอนนี้: {TIER_TH[tier]}
+              </span>
+              <span className="desktop-only" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
+                · {action}
+              </span>
+              <span
+                className="num-mono desktop-only"
+                style={{
+                  marginLeft: "auto",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: riskMeta[tier].color,
+                  paddingRight: 6,
+                }}
+              >
+                {score}
+                <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>/100</span>
+              </span>
+            </>
+          ) : (
+            <span style={{ color: "var(--ink-2)", fontSize: 13 }}>
+              {statusMsg ? `${statusMsg} — เลือกตำบลของคุณจากแผนที่หรือค้นหา` : "กำลังโหลด…"}
+            </span>
+          )}
+        </div>
+
+        {/* Search */}
+        <div style={{ position: "relative", width: 280, flex: "none" }} className="desktop-only">
+          <div className="search">
+            <Search size={14} style={{ color: "var(--ink-3)", flex: "none" }} />
+            <input
+              placeholder="ใส่ที่อยู่ของคุณ — ตำบล / อำเภอ"
+              value={searchQ}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
           </div>
-        </details>
+          {searchResults.length > 0 ? (
+            <div
+              className="glass"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                right: 0,
+                left: 0,
+                padding: 6,
+                maxHeight: 320,
+                overflowY: "auto",
+                zIndex: 30,
+              }}
+            >
+              {searchResults.map((r) => (
+                <button
+                  key={r.feature.properties.GID_3}
+                  onClick={() => onSearchPick(r.feature.properties.GID_3)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    color: "var(--ink)",
+                    width: "100%",
+                    textAlign: "left",
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <MapPin size={14} style={{ color: riskMeta[r.liveTier].color }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                      ตำบล{r.feature.properties.NAME_3}
+                    </span>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                      อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
+                    </span>
+                  </span>
+                  <span className={`tier ${TIER_PILL[r.liveTier]}`} style={{ fontSize: 11 }}>
+                    {TIER_TH[r.liveTier]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
+
+      {loadError ? (
+        <div
+          style={{
+            marginTop: 8,
+            padding: 8,
+            background: "rgba(215,48,39,0.18)",
+            border: "1px solid rgba(215,48,39,0.5)",
+            borderRadius: 8,
+            color: "#ffd9d9",
+            fontSize: 12,
+          }}
+        >
+          โหลดข้อมูลไม่สำเร็จ: {loadError}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function ScoreCard({
+// ─── LayerSwitch ────────────────────────────────────────────────
+
+function LayerSwitch({
+  on,
+  disabled,
   label,
+  hint,
   icon,
-  score,
-  color,
-  sub,
+  onClick,
 }: {
+  on: boolean;
+  disabled?: boolean;
   label: string;
+  hint: string;
   icon: React.ReactNode;
-  score: number;
-  color: string;
-  sub: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
-      <div className="mb-2 flex items-center gap-1 text-[11px] text-[#9fb7b3]">
-        {icon}
-        {label}
-      </div>
-      <div className="text-2xl font-semibold" style={{ color }}>
-        {score}
-      </div>
-      <div className="mt-1 text-[11px] leading-4 text-[#9fb7b3]">{sub}</div>
-    </div>
+    <button
+      className={`toggle ${on ? "on" : ""}`}
+      style={{ opacity: disabled ? 0.4 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="tg-glyph">{icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span className="tg-label">{label}</span>
+        <span className="tg-hint">{hint}</span>
+      </span>
+      <span className="tg-sw" />
+    </button>
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+// ─── Drawer ─────────────────────────────────────────────────────
+
+function Drawer({
+  row,
+  isUser,
+  onClose,
+  methodOpen,
+  onToggleMethod,
+  methodSteps,
+  sources,
+  topRiskList,
+  onPickRow,
+}: {
+  row: TambonRow;
+  isUser: boolean;
+  onClose: () => void;
+  methodOpen: boolean;
+  onToggleMethod: () => void;
+  methodSteps: string[];
+  sources: SourceNote[];
+  topRiskList: TambonRow[];
+  onPickRow: (gid: string) => void;
+}) {
+  const p = row.feature.properties;
+  const tier = row.liveTier;
+  const score = Math.round(row.liveNorm * 100);
+
+  // Contribution components — derived from per-tambon row values
+  const terrain = Math.min(1, row.staticNorm);
+  const wet = Math.min(1, row.wetnessNorm);
+  const precip = Math.min(1, row.precipNorm);
+
   return (
-    <div className="rounded-lg bg-white/[0.035] p-2">
-      <dt className="text-[#9fb7b3]">{label}</dt>
-      <dd className="mt-0.5 font-semibold">{value}</dd>
+    <aside
+      className="glass desktop-only"
+      style={{
+        position: "absolute",
+        top: 88,
+        right: 16,
+        bottom: 16,
+        width: 384,
+        zIndex: 18,
+        padding: 18,
+        display: "flex",
+        flexDirection: "column",
+        gap: 14,
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>
+            ตำบล{p.NAME_3}
+            {isUser ? (
+              <span style={{ color: "var(--accent)", fontSize: 11, fontWeight: 600, marginLeft: 8, letterSpacing: "0.10em", textTransform: "uppercase" }}>
+                ที่ตั้งของคุณ
+              </span>
+            ) : null}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-2)" }}>
+            อ.{p.NAME_2} · จ.{thaiName(p.NAME_1)}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ textAlign: "right" }}>
+            <div className="num-mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              อันดับ
+            </div>
+            <div className="num-mono" style={{ fontSize: 16, fontWeight: 600 }}>
+              {p.rank}
+              <span style={{ color: "var(--ink-3)", marginLeft: 2 }}>/ 663</span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 14,
+              background: "rgba(255,255,255,0.10)",
+              color: "var(--ink)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: 0,
+              cursor: "pointer",
+            }}
+            aria-label="ปิด"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="drawer-scroll" style={{ display: "flex", flexDirection: "column", gap: 14, paddingRight: 4 }}>
+        {/* Tier badge */}
+        <div className={`tier-badge ${TIER_BG[tier]}`}>
+          <div className="glyph">{tierGlyph(tier)}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="label-tier">{TIER_TH[tier]}</div>
+            <div className="label-en">{TIER_EN[tier]} · flash flood risk</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div className="num-mono" style={{ fontSize: 24, fontWeight: 700, color: "currentColor" }}>
+              {score}
+            </div>
+            <div className="caps" style={{ color: "currentColor", opacity: 0.7 }}>
+              / 100
+            </div>
+          </div>
+        </div>
+
+        {/* Action verb */}
+        <div className="action" style={{ color: riskMeta[tier].color }}>
+          <span>{tierActionTH(tier)}</span>
+        </div>
+
+        {/* Contributions */}
+        <div>
+          <div className="caps" style={{ marginBottom: 8 }}>
+            ทำไมถึงระดับนี้
+          </div>
+          <div className="contrib">
+            <ContribRow
+              name="ภูมิประเทศ"
+              en="Terrain"
+              cls="terrain"
+              value={Math.round(terrain * 100)}
+              pct={terrain * 100}
+            />
+            <ContribRow
+              name="ดินอิ่มน้ำ"
+              en="Wetness"
+              cls="wet"
+              value={Math.round(wet * 100)}
+              pct={wet * 100}
+              extra={row.wetnessMm !== null ? `${row.wetnessMm.toFixed(0)} มม. / 7วัน` : undefined}
+            />
+            <ContribRow
+              name="ฝนตอนนี้"
+              en="Precip"
+              cls="precip"
+              value={Math.round(precip * 100)}
+              pct={precip * 100}
+              extra={`${row.precipMmPerHr.toFixed(1)} มม./ชม.`}
+            />
+          </div>
+        </div>
+
+        {/* Mini stats */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <div
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(120,200,200,0.06)",
+              border: "1px solid var(--hairline)",
+            }}
+          >
+            <div className="caps">บ้านเรือน</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+              <span className="num-mono">
+                {p.buildings !== undefined ? formatNumber(p.buildings) : "—"}
+              </span>
+              <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>หลัง</span>
+            </div>
+            {p.building_area_km2 !== undefined ? (
+              <div className="num-mono" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
+                {p.building_area_km2.toFixed(2)} กม²
+              </div>
+            ) : null}
+          </div>
+          <div
+            style={{
+              flex: 1,
+              padding: 10,
+              borderRadius: 10,
+              background: "rgba(120,200,200,0.06)",
+              border: "1px solid var(--hairline)",
+            }}
+          >
+            <div className="caps">class ≥ 3</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+              <span className="num-mono">{p.class_3plus_pct.toFixed(0)}</span>
+              <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 4 }}>% ของพื้นที่</span>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
+              ขนาด {formatNumber(p.cells)} cells
+            </div>
+          </div>
+        </div>
+
+        {/* Top risk */}
+        <div>
+          <div className="caps" style={{ marginBottom: 6 }}>
+            ตำบลเสี่ยงสูงตอนนี้
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {topRiskList.map((r) => {
+              const t = r.liveTier;
+              const v = Math.round(r.liveNorm * 100);
+              const isCurrent = r.feature.properties.GID_3 === p.GID_3;
+              return (
+                <button
+                  key={r.feature.properties.GID_3}
+                  onClick={() => onPickRow(r.feature.properties.GID_3)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 6px",
+                    borderRadius: 8,
+                    background: isCurrent ? "rgba(64,224,189,0.08)" : "transparent",
+                    color: "var(--ink)",
+                    border: 0,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: riskMeta[t].color }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                      ตำบล{r.feature.properties.NAME_3}
+                    </span>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                      อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
+                    </span>
+                  </span>
+                  <span
+                    className="num-mono"
+                    style={{ fontSize: 14, color: riskMeta[t].color, fontWeight: 600 }}
+                  >
+                    {v}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Method + sources collapsible */}
+        <button
+          onClick={onToggleMethod}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(120,200,200,0.06)",
+            border: "1px solid var(--hairline-2)",
+            color: "var(--ink-2)",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Info size={14} style={{ color: "var(--ink-3)" }} />
+            วิธีคำนวณ + แหล่งข้อมูล
+          </span>
+          <ChevronDown
+            size={14}
+            style={{ transform: methodOpen ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+          />
+        </button>
+
+        {methodOpen ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 10,
+              background: "rgba(7,19,24,0.55)",
+              border: "1px solid var(--hairline)",
+              fontSize: 12,
+              lineHeight: 1.65,
+              color: "var(--ink-2)",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {methodSteps.slice(0, 5).map((step, i) => (
+                <div key={step} style={{ display: "flex", gap: 8 }}>
+                  <span className="num-mono" style={{ color: "var(--accent)" }}>
+                    {i + 1}
+                  </span>
+                  <span>{step}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+              {sources.map((src) => (
+                <a
+                  key={src.href}
+                  href={src.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "var(--ink-2)", textDecoration: "underline", textDecorationColor: "var(--ink-4)" }}
+                >
+                  {src.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function ContribRow({
+  name,
+  en,
+  cls,
+  value,
+  pct,
+  extra,
+}: {
+  name: string;
+  en: string;
+  cls: string;
+  value: number;
+  pct: number;
+  extra?: string;
+}) {
+  return (
+    <div className="contrib-row">
+      <div className="contrib-head">
+        <span className="name">
+          {name} <small>{en}</small>
+          {extra ? (
+            <small style={{ color: "var(--ink-3)", marginLeft: 6 }}>· {extra}</small>
+          ) : null}
+        </span>
+        <span className="val num-mono">{value}</span>
+      </div>
+      <div className="contrib-track">
+        <div className={`contrib-fill ${cls}`} style={{ width: `${pct}%` }} />
+      </div>
     </div>
   );
 }
 
-// suppress unused warning for tierFromNorm, productCopy imports if not used in types only
+// keep imports referenced even if not used in this version
 void tierFromNorm;
-void productCopy;

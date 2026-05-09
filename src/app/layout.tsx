@@ -1,21 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const plexThai = IBM_Plex_Sans_Thai({
+  variable: "--font-plex-thai",
+  subsets: ["thai", "latin"],
+  weight: ["300", "400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Flashflood Risk Intelligence",
+  title: "Flashflood · เตือนภัยน้ำป่า ภาคเหนือ",
   description:
-    "Interactive flash-flood risk map for Thailand using terrain, recent fire, building exposure, and rain context.",
+    "เตือนภัยน้ำป่าระดับตำบลใน 9 จังหวัดภาคเหนือ — ผสาน hazard surface จาก Google Earth Engine กับฝนสะสม + radar API สำหรับเตือนภัยตามจริง",
 };
 
 export const viewport: Viewport = {
@@ -30,8 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="th" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body>{children}</body>
+    <html lang="th" className={`${plexThai.variable} ${plexMono.variable}`}>
+      <body style={{ fontFamily: "var(--font-plex-thai), var(--font-ui)" }}>
+        {children}
+      </body>
     </html>
   );
 }

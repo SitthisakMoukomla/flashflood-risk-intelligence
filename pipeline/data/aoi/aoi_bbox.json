@@ -1,0 +1,20 @@
+{
+  "crs": "EPSG:4326",
+  "minx": 97.3452,
+  "miny": 17.2055,
+  "maxx": 101.3594,
+  "maxy": 20.4631,
+  "width_deg": 4.014199999999988,
+  "height_deg": 3.2576,
+  "area_km2": 88199.4,
+  "provinces": [
+    "ChiangMai",
+    "ChiangRai",
+    "Lampang",
+    "Lamphun",
+    "MaeHongSon",
+    "Nan",
+    "Phayao",
+    "Phrae"
+  ]
+}

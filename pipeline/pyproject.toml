@@ -1,0 +1,20 @@
+[project]
+name = "flashflood-pipeline"
+version = "0.1.0"
+description = "Static seasonal susceptibility raster pipeline for FlashFlood Risk Intelligence"
+requires-python = ">=3.11"
+dependencies = [
+    "rasterio>=1.4",
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "requests>=2.31",
+    "rio-cogeo>=5.3",
+    "pysheds>=0.4",
+    "tqdm>=4.66",
+    "click>=8.1",
+]
+
+[tool.uv]
+package = false

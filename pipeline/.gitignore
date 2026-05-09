@@ -1,0 +1,23 @@
+# Python venv
+.venv/
+__pycache__/
+*.pyc
+.python-version
+
+# uv
+.uv-cache/
+
+# Pipeline data (large files; rebuild from scripts)
+data/dem/
+data/burn/
+data/buildings/
+data/output/
+data/aoi/gadm41_THA_1.json.zip
+
+# Pipeline outputs to keep small/checked-in:
+# - data/aoi/aoi_north_thailand.geojson
+# - data/aoi/aoi_north_provinces.geojson
+# - data/aoi/aoi_bbox.json
+!data/aoi/aoi_north_thailand.geojson
+!data/aoi/aoi_north_provinces.geojson
+!data/aoi/aoi_bbox.json

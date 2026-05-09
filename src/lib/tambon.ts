@@ -22,6 +22,9 @@ export type TambonProperties = {
   class_3plus_pct: number;
   risk_p90_norm: number;
   risk_p95_norm: number;
+  /** Added by 08_buildings_per_tambon.py — present after the buildings refresh runs. */
+  buildings?: number;
+  building_area_km2?: number;
 };
 
 export type TambonFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon, TambonProperties>;
@@ -97,11 +100,17 @@ export const layerModes: Record<LayerMode, { label: string; description: string 
   },
 };
 
-// Live trigger formula: rain context boosts the static hazard.
-// Conservative base: even with no rain, the static map keeps 40% of its weight.
-export function liveRiskNorm(staticNorm: number, wetnessNorm: number, rainBoost = 0): number {
-  const trigger = Math.max(wetnessNorm, rainBoost);
-  return Math.min(1, staticNorm * (0.4 + 0.6 * trigger));
+// Live trigger formula.
+// Two channels combine:
+//   base    = static × (0.4 + 0.6 × wetness)         — saturated soil amplifies static hazard
+//   kick    = precipNow × (0.3 + 0.4 × wetness)      — live rain adds *on top*, more on already-wet ground
+//   live    = min(1, base + kick)
+// This lets precip push beyond static when intensity is high — the user's
+// requested behaviour. Clipped at 1.0 so colour ramp stays bounded.
+export function liveRiskNorm(staticNorm: number, wetnessNorm: number, precipNorm = 0): number {
+  const base = staticNorm * (0.4 + 0.6 * wetnessNorm);
+  const kick = precipNorm * (0.3 + 0.4 * wetnessNorm);
+  return Math.min(1, base + kick);
 }
 
 // 5-stop diverging color ramp for risk values in [0..1].
@@ -145,14 +154,40 @@ export type TambonRow = {
   staticNorm: number;
   wetnessNorm: number;
   wetnessMm: number | null;
+  precipNorm: number;
+  precipMmPerHr: number;
   liveNorm: number;
   tier: RiskTier;
   liveTier: RiskTier;
 };
 
+/** Approximate centroid of a Polygon/MultiPolygon by averaging exterior ring vertices. */
+function approxCentroid(geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): [number, number] | null {
+  const ring =
+    geom.type === "Polygon" ? geom.coordinates[0] : geom.coordinates[0]?.[0];
+  if (!ring || ring.length === 0) return null;
+  let sx = 0;
+  let sy = 0;
+  for (const [lon, lat] of ring) {
+    sx += lon;
+    sy += lat;
+  }
+  return [sx / ring.length, sy / ring.length];
+}
+
+/** Nearest-cell sample of a flat grid at (lat, lon). Returns 0 outside grid. */
+function sampleGrid(grid: WetnessGrid, lat: number, lon: number, field: "rain_7d_mm" | "precip_now_mm_per_hr"): number {
+  const [w, s, e, n] = grid.grid_bbox;
+  if (lat < s || lat > n || lon < w || lon > e) return 0;
+  const col = Math.min(grid.cols - 1, Math.max(0, Math.round((lon - w) / (e - w) * (grid.cols - 1))));
+  const row = Math.min(grid.rows - 1, Math.max(0, Math.round((n - lat) / (n - s) * (grid.rows - 1))));
+  return grid[field][row * grid.cols + col] ?? 0;
+}
+
 export function buildTambonRows(
   fc: TambonCollection,
   wetness: WetnessPayload | null,
+  grid: WetnessGrid | null = null,
 ): TambonRow[] {
   const wetByGid = new Map<string, WetnessRecord>();
   if (wetness) {
@@ -165,12 +200,25 @@ export function buildTambonRows(
     const wetnessNorm = w ? w.wetness_norm : 0;
     const wetnessMm = w ? w.rain_7d_mm : null;
     const staticNorm = p.risk_p90_norm;
-    const live = liveRiskNorm(staticNorm, wetnessNorm, 0);
+
+    let precipMmPerHr = 0;
+    let precipNorm = 0;
+    if (grid) {
+      const c = approxCentroid(feature.geometry);
+      if (c) {
+        precipMmPerHr = sampleGrid(grid, c[1], c[0], "precip_now_mm_per_hr");
+        precipNorm = Math.min(1, precipMmPerHr / grid.precip_now_norm_cap_mm_per_hr);
+      }
+    }
+
+    const live = liveRiskNorm(staticNorm, wetnessNorm, precipNorm);
     return {
       feature,
       staticNorm,
       wetnessNorm,
       wetnessMm,
+      precipNorm,
+      precipMmPerHr,
       liveNorm: live,
       tier: tierFromNorm(staticNorm),
       liveTier: tierFromNorm(live),

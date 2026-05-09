@@ -45,6 +45,15 @@ type RainLayerPayload = {
   source: string;
 };
 
+type StaticOverlayMeta = {
+  generated_at: string;
+  bbox: [number, number, number, number]; // west, south, east, north
+  width: number;
+  height: number;
+  norm_low: number;
+  norm_high: number;
+};
+
 const PROVINCE_NAMES: Record<string, string> = {
   ChiangMai: "เชียงใหม่",
   ChiangRai: "เชียงราย",
@@ -120,10 +129,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const rainLayerRef = useRef<Leaflet.TileLayer | null>(null);
   const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const precipOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
+  const [staticMeta, setStaticMeta] = useState<StaticOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
   const [layerMode, setLayerMode] = useState<LayerMode>("static");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
@@ -139,10 +150,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     let active = true;
     (async () => {
       try {
-        const [vrRes, wRes, gRes] = await Promise.all([
+        const [vrRes, wRes, gRes, sRes] = await Promise.all([
           fetch("/data/village_risk.geojson"),
           fetch("/data/wetness_7d.json"),
           fetch("/data/wetness_grid.json"),
+          fetch("/data/static_overlay_meta.json"),
         ]);
         if (!vrRes.ok) throw new Error(`village_risk.geojson ${vrRes.status}`);
         const fc = (await vrRes.json()) as TambonCollection;
@@ -154,6 +166,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         if (gRes.ok) {
           const g = (await gRes.json()) as WetnessGrid;
           if (active) setGrid(g);
+        }
+        if (sRes.ok) {
+          const m = (await sRes.json()) as StaticOverlayMeta;
+          if (active) setStaticMeta(m);
         }
       } catch (e) {
         if (active) setLoadError(e instanceof Error ? e.message : "load failed");
@@ -176,8 +192,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
   // 2) Build rows from data
   const rows = useMemo(
-    () => (tambonFC ? buildTambonRows(tambonFC, wetness) : []),
-    [tambonFC, wetness],
+    () => (tambonFC ? buildTambonRows(tambonFC, wetness, grid) : []),
+    [tambonFC, wetness, grid],
   );
 
   const provinces = useMemo(() => {
@@ -276,12 +292,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const row = gid ? rowByGid.get(gid) : undefined;
         if (!row) return {};
         const isSelected = row.feature.properties.GID_3 === selectedGid;
-        // In wetness mode the gridded raster carries the colour — show the
-        // tambon as a faint outline only, still clickable for the detail panel.
-        if (layerMode === "wetness") {
+        // In static and wetness modes the underlying raster carries the colour —
+        // tambon polygons are just outlines that stay clickable for the detail panel.
+        // Live mode keeps polygons coloured because that's the village-ranking view.
+        if (layerMode === "static" || layerMode === "wetness") {
           return {
-            fillOpacity: 0,
-            color: isSelected ? "#ffffff" : "rgba(255,255,255,0.18)",
+            fillOpacity: isSelected ? 0.18 : 0,
+            fillColor: isSelected ? "#ffffff" : undefined,
+            color: isSelected ? "#ffffff" : "rgba(255,255,255,0.16)",
             weight: isSelected ? 2.5 : 0.4,
             opacity: 0.9,
           };
@@ -334,7 +352,25 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
   }, [isMapReady, showRainOverlay, rainLayer]);
 
-  // 6) Wetness raster overlay (continuous field, not following polygons)
+  // 6a) Static hazard raster overlay (the GEE susceptibility export, downsampled)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (staticOverlayRef.current) {
+      staticOverlayRef.current.removeFrom(map);
+      staticOverlayRef.current = null;
+    }
+    if (layerMode !== "static" || !staticMeta) return;
+    const [w, s, e, n] = staticMeta.bbox;
+    staticOverlayRef.current = L.imageOverlay("/data/static_overlay.png", [[s, w], [n, e]], {
+      opacity: 0.78,
+      interactive: false,
+      className: "static-overlay",
+    }).addTo(map);
+  }, [isMapReady, layerMode, staticMeta]);
+
+  // 6b) Wetness raster overlay (continuous field, not following polygons)
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -667,13 +703,20 @@ function SelectedDetail({ row, sources }: { row: TambonRow; sources: SourceNote[
         </span>
       </div>
 
-      <div className="mt-5 grid grid-cols-3 gap-2">
+      <div className="mt-5 grid grid-cols-2 gap-2">
         <ScoreCard
           label="Static hazard"
           icon={<Mountain size={14} />}
           score={Math.round(row.staticNorm * 100)}
           color={riskMeta[tier].color}
           sub={`p90 ${row.feature.properties.risk_p90.toFixed(2)}`}
+        />
+        <ScoreCard
+          label="Risk live"
+          icon={<Radar size={14} />}
+          score={Math.round(row.liveNorm * 100)}
+          color={riskMeta[liveTier].color}
+          sub={`tier ${riskMeta[liveTier].label}`}
         />
         <ScoreCard
           label="ดินอิ่มน้ำ"
@@ -683,11 +726,11 @@ function SelectedDetail({ row, sources }: { row: TambonRow; sources: SourceNote[
           sub={row.wetnessMm !== null ? `${row.wetnessMm.toFixed(0)} มม. / 7วัน` : "—"}
         />
         <ScoreCard
-          label="Risk live"
-          icon={<Radar size={14} />}
-          score={Math.round(row.liveNorm * 100)}
-          color={riskMeta[liveTier].color}
-          sub={`tier ${riskMeta[liveTier].label}`}
+          label="ฝนตอนนี้"
+          icon={<Droplets size={14} />}
+          score={Math.round(row.precipNorm * 100)}
+          color={row.precipMmPerHr > 0 ? "#fdae61" : "#5a7d7a"}
+          sub={`${row.precipMmPerHr.toFixed(1)} มม./ชม.`}
         />
       </div>
 
@@ -701,6 +744,18 @@ function SelectedDetail({ row, sources }: { row: TambonRow; sources: SourceNote[
             <Field label="p95 hazard" value={p.risk_p95.toFixed(2)} />
             <Field label="class ≥3" value={`${p.class_3plus_pct.toFixed(0)}%`} />
             <Field label="ขนาด" value={`${formatNumber(p.cells)} cells`} />
+            {p.buildings !== undefined ? (
+              <Field
+                label="บ้านเรือน"
+                value={`${formatNumber(p.buildings)} หลัง`}
+              />
+            ) : null}
+            {p.building_area_km2 !== undefined && p.building_area_km2 > 0 ? (
+              <Field
+                label="พื้นที่อาคาร"
+                value={`${p.building_area_km2.toFixed(2)} กม²`}
+              />
+            ) : null}
           </dl>
           <p className="mt-3 text-[11px] leading-5 text-[#9fb7b3]">
             {row.wetnessMm === null

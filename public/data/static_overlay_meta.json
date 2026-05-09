@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-05-09T08:31:56.808408+00:00",
+  "source_raster": "data/output/susceptibility.tif",
+  "bbox": [
+    97.3432408177596,
+    17.158720241966982,
+    101.3560151919215,
+    20.46541880281094
+  ],
+  "width": 1200,
+  "height": 989,
+  "norm_low": 0.21111303567886353,
+  "norm_high": 0.6484362483024597,
+  "ramp": "green→yellow→red (matches riskRampColor)"
+}

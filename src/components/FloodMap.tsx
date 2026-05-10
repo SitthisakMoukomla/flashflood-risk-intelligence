@@ -72,6 +72,44 @@ type BuildingsOverlayMeta = {
 
 type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
 
+type ThaiWaterStation = {
+  id: number;
+  rain_24h: number | null;
+  rain_1h: number | null;
+  rainfall_datetime: string;
+  agency: { agency_shortname?: { th?: string; en?: string } };
+  geocode: { province_code: string; province_name?: { th?: string } };
+  station: {
+    tele_station_name?: { th?: string };
+    tele_station_lat: number;
+    tele_station_long: number;
+  };
+};
+
+const NORTH_PROVINCE_CODES = new Set([
+  "50", // Chiang Mai
+  "51", // Lamphun
+  "52", // Lampang
+  "53", // Uttaradit
+  "54", // Phrae
+  "55", // Nan
+  "56", // Phayao
+  "57", // Chiang Rai
+  "58", // Mae Hong Son
+]);
+const THAIWATER_RAIN_24H_URL =
+  "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/rain_24h";
+
+/** Colour-by-rain (mm/24h) — light → red. */
+function rainStationColor(mm: number): string {
+  if (mm <= 0) return "rgba(140,180,210,0.35)"; // dry
+  if (mm < 10) return "#5cc4ee";
+  if (mm < 25) return "#3b82f6";
+  if (mm < 50) return "#fdae61";
+  if (mm < 90) return "#f97316";
+  return "#d73027";
+}
+
 type Basemap = "osm" | "topo" | "satellite";
 
 const BASEMAPS: Record<
@@ -260,6 +298,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const buildingsPtsCacheRef = useRef<Map<string, [number, number][]>>(new Map());
   const basemapRef = useRef<Leaflet.TileLayer | null>(null);
   const userMarkerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
@@ -284,6 +323,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [layerMode, setLayerMode] = useState<LayerMode | null>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   const [showBuildings, setShowBuildings] = useState(false);
+  const [showRainStations, setShowRainStations] = useState(false);
+  const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -343,6 +384,24 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   // a useMemo that depends on `grid`.
   useEffect(() => {
     let active = true;
+    const fetchStations = async () => {
+      try {
+        const r = await fetch(THAIWATER_RAIN_24H_URL, { cache: "no-store" });
+        if (!r.ok || !active) return;
+        const payload = (await r.json()) as { data: ThaiWaterStation[] };
+        // Filter to the 9 northern provinces; drop rows missing coordinates.
+        const north = payload.data.filter(
+          (s) =>
+            NORTH_PROVINCE_CODES.has(s.geocode?.province_code) &&
+            s.station &&
+            Number.isFinite(s.station.tele_station_lat) &&
+            Number.isFinite(s.station.tele_station_long),
+        );
+        if (active) setRainStations(north);
+      } catch {
+        /* leave previous payload */
+      }
+    };
     const refresh = async () => {
       if (!active) return;
       setRefreshing(true);
@@ -354,12 +413,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         }
         const rv = await fetch("/api/rainviewer", { cache: "no-store" });
         if (rv.ok && active) setRainLayer((await rv.json()) as RainLayerPayload);
+        await fetchStations();
       } catch {
         /* keep prev data */
       } finally {
         if (active) setRefreshing(false);
       }
     };
+    // First load: also fetch ThaiWater stations once.
+    void fetchStations();
     const id = window.setInterval(refresh, 15 * 60_000);
     const onVis = () => {
       if (!document.hidden) void refresh();
@@ -753,6 +815,50 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
   }, [isMapReady, showRainOverlay, rainLayer]);
 
+  // 6e) HII ThaiWater rain-station observations (1,400+ gauges in N TH)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (rainStationsLayerRef.current) {
+      rainStationsLayerRef.current.removeFrom(map);
+      rainStationsLayerRef.current = null;
+    }
+    if (!showRainStations || !rainStations || rainStations.length === 0) return;
+
+    const group = L.layerGroup();
+    for (const s of rainStations) {
+      const lat = s.station.tele_station_lat;
+      const lng = s.station.tele_station_long;
+      const mm24 = Number(s.rain_24h ?? 0) || 0;
+      const mm1 = Number(s.rain_1h ?? 0) || 0;
+      const radius = 4 + Math.min(8, Math.sqrt(mm24));
+      const marker = L.circleMarker([lat, lng], {
+        radius,
+        color: "#0a1318",
+        weight: 0.6,
+        fillColor: rainStationColor(mm24),
+        fillOpacity: 0.9,
+        interactive: true,
+      });
+      const name = s.station.tele_station_name?.th ?? "(สถานี)";
+      const agency = s.agency?.agency_shortname?.th ?? "";
+      const province = s.geocode?.province_name?.th ?? "";
+      marker.bindTooltip(
+        `<b>${name}</b>` +
+          (agency ? ` <span style="opacity:.7">${agency}</span>` : "") +
+          `<br/>${province}` +
+          `<br/>ฝน 24 ชม. <b>${mm24.toFixed(1)}</b> มม.` +
+          ` · 1 ชม. <b>${mm1.toFixed(1)}</b> มม.` +
+          `<br/><span style="opacity:.6;font-size:10px">${s.rainfall_datetime}</span>`,
+        { sticky: true, opacity: 0.95, direction: "top" },
+      );
+      marker.addTo(group);
+    }
+    group.addTo(map);
+    rainStationsLayerRef.current = group;
+  }, [isMapReady, showRainStations, rainStations]);
+
   // 7) Per-tambon building points (vector). Replaces the density blob with
   // actual centroids when the user has selected a tambon AND zoomed past 12.
   useEffect(() => {
@@ -963,6 +1069,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             hint={rainLayer ? `RainViewer · ${formatTimeBKK(rainLayer.frameTime)}` : "ไม่มีข้อมูล"}
             icon={<Radar size={18} strokeWidth={2} />}
             onClick={() => setShowRainOverlay((v) => !v)}
+          />
+          <LayerSwitch
+            on={showRainStations}
+            disabled={!rainStations}
+            label="ฝนสถานีตรวจวัด"
+            hint={
+              rainStations
+                ? `HII · ${rainStations.length} สถานี · ฝน 24 ชม.`
+                : "ไม่มีข้อมูล"
+            }
+            icon={<Droplets size={18} strokeWidth={2} />}
+            onClick={() => setShowRainStations((v) => !v)}
           />
           <LayerSwitch
             on={showBuildings}

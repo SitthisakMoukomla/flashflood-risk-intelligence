@@ -381,7 +381,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [searchQ, setSearchQ] = useState("");
 
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  // Drawer defaults to closed on phones (the bottom sheet eats too much
+  // map otherwise). On desktop the right-rail drawer is the side panel
+  // so it makes sense to start open.
+  const [drawerOpen, setDrawerOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 821px)").matches;
+  });
   const [methodOpen, setMethodOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1508,7 +1514,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           visible even when the bottom-sheet drawer is open (drawer z=30
           covered the old bottom-positioned picker). */}
       <div
-        className="mobile-only"
+        className="mobile-only mobile-mode-picker"
         style={{
           position: "absolute",
           left: 8,
@@ -1606,8 +1612,9 @@ function HeroRibbon({
       style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 22, padding: "12px 16px" }}
     >
       <div className="hero-row" style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44, flexWrap: "wrap" }}>
-        {/* Wordmark */}
+        {/* Wordmark — desktop only */}
         <div
+          className="hero-wordmark"
           style={{
             display: "flex",
             alignItems: "center",
@@ -1628,30 +1635,31 @@ function HeroRibbon({
         </div>
 
         {/* Risk text + tier */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
           {row ? (
             <>
-              <span
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  color: "var(--ink-2)",
-                  fontSize: 13,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                <MapPin size={14} style={{ color: "var(--accent)" }} />
-                {liveLabel}
+              <span style={{ display: "flex", alignItems: "center", flex: "none" }}>
+                <MapPin size={16} style={{ color: "var(--accent)" }} />
+                <span
+                  className="hero-locate-label"
+                  style={{
+                    color: "var(--ink-2)",
+                    fontSize: 13,
+                    whiteSpace: "nowrap",
+                    marginLeft: 6,
+                  }}
+                >
+                  {liveLabel}
+                </span>
               </span>
-              <span style={{ fontSize: 15.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+              <span className="hero-tambon" style={{ fontSize: 15.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "1 1 auto", minWidth: 0 }}>
                 ตำบล{row.feature.properties.NAME_3}
                 <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
                   {" "}อ.{row.feature.properties.NAME_2} · จ.{thaiName(row.feature.properties.NAME_1)}
                 </span>
               </span>
-              <span className={`tier ${TIER_PILL[tier]}`}>
-                ตอนนี้: {TIER_TH[tier]}
+              <span className={`tier ${TIER_PILL[tier]} hero-tier-pill`} style={{ flex: "none" }}>
+                {TIER_TH[tier]}
               </span>
               <span className="hero-action" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
                 · {action}

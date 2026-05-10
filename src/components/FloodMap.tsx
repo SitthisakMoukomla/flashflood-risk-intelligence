@@ -374,6 +374,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
@@ -1364,22 +1365,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           />
         </button>
         <button
-          onClick={() => setShowRainOverlay((v) => !v)}
-          className={showRainOverlay ? "on" : ""}
-          aria-label="เรดาร์ฝน"
-          disabled={!rainLayer}
-          title="เรดาร์ฝน"
+          onClick={() => setMobileLayersOpen(true)}
+          className={mobileLayersOpen ? "on" : ""}
+          aria-label="เลเยอร์ทั้งหมด"
+          title="เลเยอร์ + แผนที่พื้นฐาน"
         >
-          <Radar size={18} />
-        </button>
-        <button
-          onClick={() => setShowBuildings((v) => !v)}
-          className={showBuildings ? "on" : ""}
-          aria-label="บ้านเรือน"
-          disabled={!buildingsMeta}
-          title="บ้านเรือน"
-        >
-          <Building2 size={18} />
+          <Layers size={18} />
         </button>
         <button
           onClick={() => setDrawerOpen((v) => !v)}
@@ -1390,6 +1381,128 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           <Info size={18} />
         </button>
       </div>
+
+      {/* Mobile layers bottom-sheet — exposes every toggle that lives in
+          the desktop side panel (basemap, radar, rain/water stations,
+          buildings) on a touch-friendly surface. */}
+      {mobileLayersOpen ? (
+        <>
+          <div
+            className="mobile-only"
+            onClick={() => setMobileLayersOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.45)",
+              zIndex: 31,
+            }}
+          />
+          <div
+            className="mobile-only glass"
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 32,
+              borderRadius: "18px 18px 0 0",
+              padding: "8px 14px 22px",
+              maxHeight: "78vh",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 4,
+                background: "rgba(120,200,200,0.35)",
+                borderRadius: 2,
+                margin: "6px auto 12px",
+              }}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>เลเยอร์</h3>
+              <button
+                onClick={() => setMobileLayersOpen(false)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.10)",
+                  color: "var(--ink)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  border: 0,
+                  cursor: "pointer",
+                }}
+                aria-label="ปิด"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="caps" style={{ marginTop: 10 }}>เลเยอร์เพิ่มเติม</div>
+            <LayerSwitch
+              on={showRainOverlay}
+              disabled={!rainLayer}
+              label="เรดาร์ฝน"
+              hint={rainLayer ? `RainViewer · ${formatTimeBKK(rainLayer.frameTime)}` : "ไม่มีข้อมูล"}
+              icon={<Radar size={18} strokeWidth={2} />}
+              onClick={() => setShowRainOverlay((v) => !v)}
+            />
+            <LayerSwitch
+              on={showRainStations}
+              disabled={!rainStations}
+              label="ฝนสถานีตรวจวัด"
+              hint={rainStations ? `HII · ${rainStations.length} สถานี` : "ไม่มีข้อมูล"}
+              icon={<Droplets size={18} strokeWidth={2} />}
+              onClick={() => setShowRainStations((v) => !v)}
+            />
+            <LayerSwitch
+              on={showWaterStations}
+              disabled={!waterStations}
+              label="น้ำท่าสถานีตรวจวัด"
+              hint={waterStations ? `HII · ${waterStations.length} สถานี` : "ไม่มีข้อมูล"}
+              icon={<Waves size={18} strokeWidth={2} />}
+              onClick={() => setShowWaterStations((v) => !v)}
+            />
+            <LayerSwitch
+              on={showBuildings}
+              disabled={!buildingsMeta}
+              label="บ้านเรือน"
+              hint={buildingsMeta ? `${formatNumber(buildingsMeta.total_buildings)} หลัง` : "ไม่มีข้อมูล"}
+              icon={<Building2 size={18} strokeWidth={2} />}
+              onClick={() => setShowBuildings((v) => !v)}
+            />
+
+            <div className="caps" style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 6 }}>
+              <Layers size={11} strokeWidth={2.4} /> Basemap
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+              {(Object.keys(BASEMAPS) as Basemap[]).map((b) => (
+                <button
+                  key={b}
+                  onClick={() => setBasemap(b)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 8px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: basemap === b ? "var(--ink)" : "var(--ink-3)",
+                    background: basemap === b ? "rgba(64,224,189,0.16)" : "rgba(120,200,200,0.06)",
+                    border: `1px solid ${basemap === b ? "rgba(64,224,189,0.45)" : "var(--hairline-2)"}`,
+                    borderRadius: 8,
+                    cursor: "pointer",
+                  }}
+                >
+                  {BASEMAPS[b].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {/* Mobile mode picker — sits directly below the hero so it's always
           visible even when the bottom-sheet drawer is open (drawer z=30

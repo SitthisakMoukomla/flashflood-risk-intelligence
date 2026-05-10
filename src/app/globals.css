@@ -433,7 +433,7 @@ a { color: inherit; }
   /* Mobile floating action cluster — single column */
   .mobile-fab {
     position: absolute;
-    right: 12px;
+    right: 10px;
     bottom: 96px;
     z-index: 18;
     display: flex;
@@ -454,6 +454,15 @@ a { color: inherit; }
     cursor: pointer;
   }
   .mobile-fab button.on { color: var(--accent); border-color: rgba(64,224,189,0.5); background: rgba(64,224,189,0.14); }
+
+  /* Mode picker mobile — clamp labels so tier labels fit on 360 px */
+  .mode-item .mi-label {
+    font-size: 11.5px !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 @media (min-width: 821px) {
   .mobile-only { display: none !important; }

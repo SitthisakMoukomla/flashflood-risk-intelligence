@@ -716,16 +716,19 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       buildingsOverlayRef.current = null;
     }
     if (!showBuildings || !buildingsMeta) return;
-    // When zoomed in on a selected tambon we render the actual building
-    // points (effect 7) — let those carry the visual instead of the blob.
-    if (zoom >= VECTOR_BUILDING_ZOOM && selectedGid) return;
+    // When zoomed in we render actual building polygons (effect 7) for
+    // the selected (or auto-selected) tambon — let those carry the
+    // visual instead of the blob.
+    const effectiveGid =
+      selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
+    if (zoom >= VECTOR_BUILDING_ZOOM && effectiveGid) return;
     const [w, s, e, n] = buildingsMeta.grid_bbox;
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
       interactive: false,
       zIndex: Z_BUILDINGS,
     }).addTo(map);
-  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid]);
+  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid, selectedRow]);
 
   // Radar overlay
   useEffect(() => {
@@ -764,7 +767,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       }
     };
 
-    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !selectedGid) {
+    // Fall back to the resolved selectedRow's GID if the user hasn't
+    // explicitly clicked a tambon yet (e.g. denied geolocation) — the
+    // drawer is already showing data for it, the buildings layer should
+    // match.
+    const effectiveGid =
+      selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
+    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !effectiveGid) {
       clear();
       return;
     }
@@ -794,16 +803,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       buildingsPtsLayerRef.current = group;
     };
 
-    const cached = cache.get(selectedGid);
+    const cached = cache.get(effectiveGid);
     if (cached) {
       draw(cached as unknown as [number, number][][]);
     } else {
-      fetch(`/data/buildings_pts/${selectedGid}.json`)
+      fetch(`/data/buildings_pts/${effectiveGid}.json`)
         .then((r) =>
           r.ok ? (r.json() as Promise<[number, number][][]>) : Promise.resolve([]),
         )
         .then((polys) => {
-          cache.set(selectedGid, polys as unknown as [number, number][]);
+          cache.set(effectiveGid, polys as unknown as [number, number][]);
           draw(polys);
         })
         .catch(() => {
@@ -814,7 +823,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [isMapReady, showBuildings, selectedGid, zoom]);
+  }, [isMapReady, showBuildings, selectedGid, selectedRow, zoom]);
 
   // ─── Actions ─────────────────────────────────────────────────
   const flyToTambon = (gid: string) => {

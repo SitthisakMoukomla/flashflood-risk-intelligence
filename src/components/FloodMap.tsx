@@ -266,7 +266,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const Z_HAZARD = 200; // static / wetness / live
   const Z_BUILDINGS = 350; // bumped above hazard so density reads through
   const Z_RADAR = 450; // RainViewer on top of everything raster
-  const VECTOR_BUILDING_ZOOM = 12; // zoom threshold for switching density → points
+  // At z=12 a 5-10 m building footprint is ~0.2 px wide — sub-pixel and
+  // effectively invisible on canvas. The density PNG actually reads better
+  // until ~z=14 where buildings start being ≥1 px and the polygon layer
+  // earns its place.
+  const VECTOR_BUILDING_ZOOM = 14;
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
@@ -772,10 +776,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       clear();
       if (polygons.length === 0) return;
       const group = L.layerGroup();
-      // Stroke and fill scale gently with zoom. Even at z=12 each footprint
-      // is 4-8 px across at our latitudes, so we lean on a translucent fill
-      // and a thin contrasty outline.
-      const stroke = zoom >= 16 ? 0.7 : 0.4;
+      // Stronger styling so footprints read clearly on Satellite basemap.
+      // Stroke goes 1 → 1.4 with zoom; fill opacity 0.85 stays solid.
+      const stroke = zoom >= 17 ? 1.4 : zoom >= 15 ? 1.1 : 1;
       for (const ring of polygons) {
         // ring is [[lng, lat], ...] — Leaflet wants [[lat, lng], ...]
         const latlngs = ring.map(([lng, lat]) => [lat, lng] as [number, number]);
@@ -783,7 +786,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           color: "#0a1318",
           weight: stroke,
           fillColor: "#fdae61",
-          fillOpacity: 0.78,
+          fillOpacity: 0.85,
           interactive: false,
         }).addTo(group);
       }

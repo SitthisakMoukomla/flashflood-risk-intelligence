@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Radar,
   Search,
+  Waves,
   X,
 } from "lucide-react";
 import type * as Leaflet from "leaflet";
@@ -86,6 +87,24 @@ type ThaiWaterStation = {
   };
 };
 
+type ThaiWaterLevelStation = {
+  id: number;
+  waterlevel_datetime: string;
+  waterlevel_m: number | string | null;
+  waterlevel_msl: number | string | null;
+  storage_percent: number | string | null;
+  flow_rate: number | string | null;
+  situation_level: number | null; // 1 (low/safe) → 5 (critical)
+  agency: { agency_shortname?: { th?: string; en?: string } };
+  basin?: { basin_name?: { th?: string } };
+  geocode: { province_code: string; province_name?: { th?: string } };
+  station: {
+    tele_station_name?: { th?: string };
+    tele_station_lat: number;
+    tele_station_long: number;
+  };
+};
+
 const NORTH_PROVINCE_CODES = new Set([
   "50", // Chiang Mai
   "51", // Lamphun
@@ -99,6 +118,8 @@ const NORTH_PROVINCE_CODES = new Set([
 ]);
 const THAIWATER_RAIN_24H_URL =
   "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/rain_24h";
+const THAIWATER_WATERLEVEL_URL =
+  "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/waterlevel";
 
 /** Colour-by-rain (mm/24h) — light → red. */
 function rainStationColor(mm: number): string {
@@ -108,6 +129,28 @@ function rainStationColor(mm: number): string {
   if (mm < 50) return "#fdae61";
   if (mm < 90) return "#f97316";
   return "#d73027";
+}
+
+/** Situation-level colour (HII tier 1-5; null falls back to neutral). */
+function situationColor(level: number | null): string {
+  switch (level) {
+    case 5: return "#d73027"; // critical
+    case 4: return "#f97316"; // high
+    case 3: return "#fdae61"; // warning
+    case 2: return "#5cc4ee"; // normal
+    case 1: return "#1a9850"; // low
+    default: return "#9aa6a6";
+  }
+}
+function situationLabel(level: number | null): string {
+  switch (level) {
+    case 5: return "วิกฤต";
+    case 4: return "สูงมาก";
+    case 3: return "เฝ้าระวัง";
+    case 2: return "ปกติ";
+    case 1: return "น้อย";
+    default: return "ไม่มีข้อมูล";
+  }
 }
 
 type Basemap = "osm" | "topo" | "satellite";
@@ -299,6 +342,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const basemapRef = useRef<Leaflet.TileLayer | null>(null);
   const userMarkerRef = useRef<Leaflet.LayerGroup | null>(null);
   const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const waterStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
@@ -325,6 +369,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [showBuildings, setShowBuildings] = useState(false);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
+  const [showWaterStations, setShowWaterStations] = useState(false);
+  const [waterStations, setWaterStations] = useState<ThaiWaterLevelStation[] | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -402,6 +448,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         /* leave previous payload */
       }
     };
+    const fetchWaterLevel = async () => {
+      try {
+        const r = await fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" });
+        if (!r.ok || !active) return;
+        const payload = (await r.json()) as { data: ThaiWaterLevelStation[] };
+        const north = payload.data.filter(
+          (s) =>
+            NORTH_PROVINCE_CODES.has(s.geocode?.province_code) &&
+            s.station &&
+            Number.isFinite(s.station.tele_station_lat) &&
+            Number.isFinite(s.station.tele_station_long),
+        );
+        if (active) setWaterStations(north);
+      } catch {
+        /* leave previous */
+      }
+    };
     const refresh = async () => {
       if (!active) return;
       setRefreshing(true);
@@ -413,7 +476,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         }
         const rv = await fetch("/api/rainviewer", { cache: "no-store" });
         if (rv.ok && active) setRainLayer((await rv.json()) as RainLayerPayload);
-        await fetchStations();
+        await Promise.all([fetchStations(), fetchWaterLevel()]);
       } catch {
         /* keep prev data */
       } finally {
@@ -422,6 +485,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     };
     // First load: also fetch ThaiWater stations once.
     void fetchStations();
+    void fetchWaterLevel();
     const id = window.setInterval(refresh, 15 * 60_000);
     const onVis = () => {
       if (!document.hidden) void refresh();
@@ -859,6 +923,60 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     rainStationsLayerRef.current = group;
   }, [isMapReady, showRainStations, rainStations]);
 
+  // 6f) HII ThaiWater water-level stations (น้ำท่า) — situation_level 1-5
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (waterStationsLayerRef.current) {
+      waterStationsLayerRef.current.removeFrom(map);
+      waterStationsLayerRef.current = null;
+    }
+    if (!showWaterStations || !waterStations || waterStations.length === 0) return;
+
+    const group = L.layerGroup();
+    for (const s of waterStations) {
+      const lat = s.station.tele_station_lat;
+      const lng = s.station.tele_station_long;
+      const sit = s.situation_level == null ? null : Number(s.situation_level);
+      const sp =
+        s.storage_percent === null || s.storage_percent === undefined
+          ? null
+          : Number(s.storage_percent);
+      const wl =
+        s.waterlevel_m === null || s.waterlevel_m === undefined
+          ? null
+          : Number(s.waterlevel_m);
+      // Square-ish marker so they read distinctly from the round rain dots.
+      const marker = L.circleMarker([lat, lng], {
+        radius: 5 + (sit ? sit : 0),
+        color: "#0a1318",
+        weight: 0.9,
+        fillColor: situationColor(sit),
+        fillOpacity: 0.92,
+        interactive: true,
+      });
+      const name = s.station.tele_station_name?.th ?? "(สถานี)";
+      const agency = s.agency?.agency_shortname?.th ?? "";
+      const province = s.geocode?.province_name?.th ?? "";
+      const basin = s.basin?.basin_name?.th ?? "";
+      marker.bindTooltip(
+        `<b>${name}</b>` +
+          (agency ? ` <span style="opacity:.7">${agency}</span>` : "") +
+          `<br/>${province}` +
+          (basin ? ` · ${basin}` : "") +
+          `<br/>ระดับน้ำ <b>${situationLabel(sit)}</b>` +
+          (wl != null ? ` · ${wl.toFixed(2)} ม.` : "") +
+          (sp != null ? ` · เทียบตลิ่ง ${sp.toFixed(0)}%` : "") +
+          `<br/><span style="opacity:.6;font-size:10px">${s.waterlevel_datetime}</span>`,
+        { sticky: true, opacity: 0.95, direction: "top" },
+      );
+      marker.addTo(group);
+    }
+    group.addTo(map);
+    waterStationsLayerRef.current = group;
+  }, [isMapReady, showWaterStations, waterStations]);
+
   // 7) Per-tambon building points (vector). Replaces the density blob with
   // actual centroids when the user has selected a tambon AND zoomed past 12.
   useEffect(() => {
@@ -1081,6 +1199,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             }
             icon={<Droplets size={18} strokeWidth={2} />}
             onClick={() => setShowRainStations((v) => !v)}
+          />
+          <LayerSwitch
+            on={showWaterStations}
+            disabled={!waterStations}
+            label="น้ำท่าสถานีตรวจวัด"
+            hint={
+              waterStations
+                ? `HII · ${waterStations.length} สถานี · ระดับน้ำ`
+                : "ไม่มีข้อมูล"
+            }
+            icon={<Waves size={18} strokeWidth={2} />}
+            onClick={() => setShowWaterStations((v) => !v)}
           />
           <LayerSwitch
             on={showBuildings}

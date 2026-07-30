@@ -9,6 +9,7 @@ import {
   Layers,
   Locate,
   MapPin,
+  Menu,
   Mountain,
   Pause,
   Play,
@@ -1601,9 +1602,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         </button>
       </div>
 
-      {/* Mobile layers bottom-sheet — exposes every toggle that lives in
-          the desktop side panel (basemap, radar, rain/water stations,
-          buildings) on a touch-friendly surface. */}
+      {/* Mobile side menu — the desktop left panel, slid in from the left.
+          Opened by the ☰ in the mode strip or the Layers FAB. */}
       {mobileLayersOpen ? (
         <>
           <div
@@ -1612,41 +1612,32 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             style={{
               position: "fixed",
               inset: 0,
-              background: "rgba(0,0,0,0.45)",
-              zIndex: 31,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 38,
             }}
           />
-          <div
-            className="mobile-only glass"
-            style={{
-              position: "fixed",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 32,
-              borderRadius: "18px 18px 0 0",
-              padding: "8px 14px 22px",
-              maxHeight: "78vh",
-              overflowY: "auto",
-            }}
-          >
+          <div className="mobile-only glass mobile-side-menu">
             <div
               style={{
-                width: 36,
-                height: 4,
-                background: "rgba(120,200,200,0.35)",
-                borderRadius: 2,
-                margin: "6px auto 12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                paddingBottom: 12,
+                borderBottom: "1px solid var(--hairline)",
               }}
-            />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>เลเยอร์</h3>
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <AlertTriangle size={20} style={{ color: "var(--accent)" }} />
+                <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: -0.2 }}>
+                  FLASHFLOOD
+                </span>
+              </div>
               <button
                 onClick={() => setMobileLayersOpen(false)}
                 style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 14,
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
                   background: "rgba(255,255,255,0.10)",
                   color: "var(--ink)",
                   display: "flex",
@@ -1655,13 +1646,62 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                   border: 0,
                   cursor: "pointer",
                 }}
-                aria-label="ปิด"
+                aria-label="ปิดเมนู"
               >
-                <X size={14} />
+                <X size={15} />
               </button>
             </div>
 
-            <div className="caps" style={{ marginTop: 10 }}>เลเยอร์เพิ่มเติม</div>
+            <div className="caps" style={{ marginTop: 14 }}>เลือกมุมมอง</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
+              {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
+                const meta = layerModes[m];
+                const Icon = m === "live" ? AlertTriangle : m === "wetness" ? Droplets : Mountain;
+                const isActive = m === layerMode;
+                return (
+                  <button
+                    key={m}
+                    className={`mode-item ${isActive ? "active" : ""}`}
+                    onClick={() => setLayerMode(isActive ? null : m)}
+                  >
+                    <span className="mi-glyph">
+                      <Icon size={20} strokeWidth={2} />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span className="mi-label">{meta.label}</span>
+                      <span className="mi-desc">{meta.description}</span>
+                    </span>
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 28,
+                        height: 16,
+                        borderRadius: 999,
+                        background: isActive ? "var(--accent)" : "rgba(120,200,200,0.18)",
+                        position: "relative",
+                        flex: "none",
+                        transition: "background 0.15s",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          top: 2,
+                          left: isActive ? 14 : 2,
+                          width: 12,
+                          height: 12,
+                          borderRadius: "50%",
+                          background: isActive ? "var(--bg)" : "var(--ink-2)",
+                          transition: "left 0.15s, background 0.15s",
+                        }}
+                      />
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="caps" style={{ marginTop: 16 }}>เลเยอร์เพิ่มเติม</div>
             <LayerSwitch
               on={showRainOverlay}
               disabled={!rainLayer}
@@ -1737,6 +1777,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         }}
       >
         <div className="glass" style={{ display: "flex", padding: 3, gap: 2 }}>
+          <button
+            className="mode-item"
+            style={{ padding: "7px 9px", borderRadius: 7, flex: "none", color: "var(--ink-2)" }}
+            onClick={() => setMobileLayersOpen(true)}
+            title="เมนูทั้งหมด"
+            aria-label="เปิดเมนู"
+          >
+            <Menu size={15} />
+          </button>
           {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
             const meta = layerModes[m];
             const isActive = m === layerMode;

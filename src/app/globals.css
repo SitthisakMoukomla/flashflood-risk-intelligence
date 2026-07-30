@@ -584,6 +584,30 @@ a { color: inherit; }
     text-overflow: ellipsis;
   }
 
+  /* Mobile side menu — desktop left panel as a slide-in drawer */
+  .mobile-side-menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    z-index: 39;
+    border-radius: 0 18px 18px 0;
+    border-left: 0;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 14px
+      calc(18px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    animation: ff-slide-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.45);
+  }
+  @keyframes ff-slide-in {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-side-menu { animation: none; }
+  }
+
   /* Mobile floating action cluster — pin above legend */
   .mobile-fab {
     position: fixed;

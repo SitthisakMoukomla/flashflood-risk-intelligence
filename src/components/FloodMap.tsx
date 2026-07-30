@@ -158,6 +158,23 @@ function situationLabel(level: number | null): string {
   }
 }
 
+/** ระดับน้ำเทียบตลิ่ง (storage_percent) — the most direct flood signal.
+ *  ≥100% = water above the lowest bank (ล้นตลิ่ง). */
+function bankPercentColor(sp: number): string {
+  if (sp >= 100) return "#d73027"; // overtopping
+  if (sp >= 80) return "#f97316"; // within 20% of the bank
+  if (sp >= 60) return "#fdae61";
+  if (sp >= 30) return "#5cc4ee";
+  return "#3f7f5f"; // low water
+}
+function bankPercentLabel(sp: number): string {
+  if (sp >= 100) return "ล้นตลิ่ง";
+  if (sp >= 80) return "ใกล้ล้นตลิ่ง";
+  if (sp >= 60) return "ค่อนข้างสูง";
+  if (sp >= 30) return "ปกติ";
+  return "น้ำน้อย";
+}
+
 type Basemap = "osm" | "topo" | "satellite";
 
 const BASEMAPS: Record<
@@ -1016,7 +1033,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     rainStationsLayerRef.current = group;
   }, [isMapReady, showRainStations, rainStations]);
 
-  // 6f) HII ThaiWater water-level stations (น้ำท่า) — situation_level 1-5
+  // 6f) HII ThaiWater water-level stations (น้ำท่า) — coloured by
+  // ระดับน้ำเทียบตลิ่ง (storage_percent). ≥100% = overtopping, drawn with
+  // an extra warning ring. Falls back to the agency situation tier when
+  // the bank percentage is missing.
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -1032,20 +1052,41 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       const lat = s.station.tele_station_lat;
       const lng = s.station.tele_station_long;
       const sit = s.situation_level == null ? null : Number(s.situation_level);
-      const sp =
+      const spRaw =
         s.storage_percent === null || s.storage_percent === undefined
           ? null
           : Number(s.storage_percent);
+      const sp = spRaw !== null && Number.isFinite(spRaw) ? spRaw : null;
       const wl =
         s.waterlevel_m === null || s.waterlevel_m === undefined
           ? null
           : Number(s.waterlevel_m);
-      // Square-ish marker so they read distinctly from the round rain dots.
+
+      const fillColor = sp !== null ? bankPercentColor(sp) : situationColor(sit);
+      const overtopping = sp !== null && sp >= 100;
+      const nearBank = sp !== null && sp >= 80 && sp < 100;
+      // Radius grows as the river approaches the bank.
+      const radius =
+        sp !== null ? 4 + Math.min(8, Math.max(0, sp) / 14) : 5 + (sit ?? 0);
+
+      // Warning ring behind overtopping / near-bank stations so they pop
+      // at province zoom.
+      if (overtopping || nearBank) {
+        L.circleMarker([lat, lng], {
+          radius: radius + 6,
+          color: fillColor,
+          weight: 1.6,
+          fill: false,
+          opacity: overtopping ? 0.9 : 0.55,
+          interactive: false,
+        }).addTo(group);
+      }
+
       const marker = L.circleMarker([lat, lng], {
-        radius: 5 + (sit ? sit : 0),
+        radius,
         color: "#0a1318",
         weight: 0.9,
-        fillColor: situationColor(sit),
+        fillColor,
         fillOpacity: 0.92,
         interactive: true,
       });
@@ -1053,14 +1094,17 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       const agency = s.agency?.agency_shortname?.th ?? "";
       const province = s.geocode?.province_name?.th ?? "";
       const basin = s.basin?.basin_name?.th ?? "";
+      const bankLine =
+        sp !== null
+          ? `<br/>เทียบตลิ่ง <b style="color:${bankPercentColor(sp)}">${sp.toFixed(0)}% · ${bankPercentLabel(sp)}</b>`
+          : `<br/>ระดับน้ำ <b>${situationLabel(sit)}</b>`;
       marker.bindTooltip(
         `<b>${name}</b>` +
           (agency ? ` <span style="opacity:.7">${agency}</span>` : "") +
           `<br/>${province}` +
           (basin ? ` · ${basin}` : "") +
-          `<br/>ระดับน้ำ <b>${situationLabel(sit)}</b>` +
-          (wl != null ? ` · ${wl.toFixed(2)} ม.` : "") +
-          (sp != null ? ` · เทียบตลิ่ง ${sp.toFixed(0)}%` : "") +
+          bankLine +
+          (wl != null ? ` · ระดับ ${wl.toFixed(2)} ม.` : "") +
           `<br/><span style="opacity:.6;font-size:10px">${s.waterlevel_datetime}</span>`,
         { sticky: true, opacity: 0.95, direction: "top" },
       );
@@ -1299,7 +1343,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             label="น้ำท่าสถานีตรวจวัด"
             hint={
               waterStations
-                ? `HII · ${waterStations.length} สถานี · ระดับน้ำ`
+                ? (() => {
+                    const over = waterStations.filter(
+                      (s) => Number(s.storage_percent) >= 100,
+                    ).length;
+                    return over > 0
+                      ? `HII · ${waterStations.length} สถานี · ล้นตลิ่ง ${over}`
+                      : `HII · ${waterStations.length} สถานี · เทียบตลิ่ง`;
+                  })()
                 : "ไม่มีข้อมูล"
             }
             icon={<Waves size={18} strokeWidth={2} />}

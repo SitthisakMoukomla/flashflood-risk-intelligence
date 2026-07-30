@@ -520,9 +520,10 @@ a { color: inherit; }
   .desktop-only { display: none !important; }
 
   /* Compact hero on phones — exactly one row, no wordmark, no search,
-     no action verb (those live in the drawer instead). */
+     no action verb (those live in the drawer instead). Safe-area padding
+     keeps content clear of the notch in standalone/PWA mode. */
   .hero-mobile {
-    padding: 8px 12px !important;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px !important;
     min-height: 52px;
   }
   .hero-mobile .hero-search,
@@ -567,13 +568,13 @@ a { color: inherit; }
     border-left: 0 !important;
     border-top: 1px solid var(--hairline-2) !important;
     z-index: 30 !important;
-    padding: 12px 14px 18px !important;
+    padding: 12px 14px calc(18px + env(safe-area-inset-bottom, 0px)) !important;
     box-shadow: 0 -16px 40px rgba(0,0,0,0.40);
   }
 
   /* Mobile mode picker — tighter padding, label only (no description). */
   .mobile-mode-picker {
-    top: 56px !important;
+    top: calc(56px + env(safe-area-inset-top, 0px)) !important;
   }
   .mode-item .mi-label {
     font-size: 12px !important;
@@ -587,7 +588,7 @@ a { color: inherit; }
   .mobile-fab {
     position: fixed;
     right: 10px;
-    bottom: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     z-index: 33;
     display: flex;
     flex-direction: column;

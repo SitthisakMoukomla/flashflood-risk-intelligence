@@ -1,0 +1,31 @@
+{
+  "id": "/",
+  "name": "Flashflood — เตือนภัยน้ำป่า ภาคเหนือ",
+  "short_name": "Flashflood",
+  "description": "แผนที่ความเสี่ยงน้ำป่ารายตำบล 9 จังหวัดภาคเหนือ — ภูมิประเทศ × ดินอิ่มน้ำ × ฝนตอนนี้ พร้อมเรดาร์เคลื่อนไหวและระดับน้ำเทียบตลิ่งจากสถานีจริง",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#071318",
+  "theme_color": "#071318",
+  "lang": "th",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

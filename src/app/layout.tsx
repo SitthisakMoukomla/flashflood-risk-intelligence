@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,11 +19,26 @@ export const metadata: Metadata = {
   title: "Flashflood · เตือนภัยน้ำป่า ภาคเหนือ",
   description:
     "เตือนภัยน้ำป่าระดับตำบลใน 9 จังหวัดภาคเหนือ — ผสาน hazard surface จาก Google Earth Engine กับฝนสะสม + radar API สำหรับเตือนภัยตามจริง",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Flashflood",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // Map apps should fill the notch area; safe-area padding is handled in CSS.
+  viewportFit: "cover",
   themeColor: "#071318",
 };
 
@@ -35,6 +51,9 @@ export default function RootLayout({
     <html lang="th" className={`${plexThai.variable} ${plexMono.variable}`}>
       <body style={{ fontFamily: "var(--font-plex-thai), var(--font-ui)" }}>
         {children}
+        <Script id="sw-register" strategy="afterInteractive">
+          {`if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }`}
+        </Script>
       </body>
     </html>
   );

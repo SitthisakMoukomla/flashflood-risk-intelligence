@@ -240,12 +240,6 @@ const TIER_TH: Record<RiskTier, string> = {
   watch: "เสี่ยงปานกลาง",
   low: "เสี่ยงต่ำ",
 };
-const TIER_BG: Record<RiskTier, string> = {
-  severe: "tb-severe",
-  high: "tb-high",
-  watch: "tb-watch",
-  low: "tb-low",
-};
 const TIER_PILL: Record<RiskTier, string> = {
   severe: "tier-severe",
   high: "tier-high",
@@ -1841,25 +1835,47 @@ function Drawer({
         bottom: 16,
         width: 384,
         zIndex: 18,
-        padding: 18,
+        padding: "16px 18px 18px",
+        borderRadius: 16,
         display: "flex",
         flexDirection: "column",
         gap: 14,
         overflow: "hidden",
       }}
     >
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 8,
+          paddingBottom: 12,
+          borderBottom: "1px solid var(--hairline)",
+        }}
+      >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.2 }}>
             ตำบล{p.NAME_3}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 8 }}>
+            อ.{p.NAME_2} · จ.{thaiName(p.NAME_1)}
             {isUser ? (
-              <span style={{ color: "var(--accent)", fontSize: 11, fontWeight: 600, marginLeft: 8, letterSpacing: "0.10em", textTransform: "uppercase" }}>
+              <span
+                style={{
+                  color: "var(--accent)",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.10em",
+                  textTransform: "uppercase",
+                  background: "rgba(64,224,189,0.12)",
+                  border: "1px solid rgba(64,224,189,0.35)",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                }}
+              >
                 ที่ตั้งของคุณ
               </span>
             ) : null}
-          </div>
-          <div style={{ fontSize: 13, color: "var(--ink-2)" }}>
-            อ.{p.NAME_2} · จ.{thaiName(p.NAME_1)}
           </div>
         </div>
         <button
@@ -1883,26 +1899,22 @@ function Drawer({
         </button>
       </div>
 
-      <div className="drawer-scroll" style={{ display: "flex", flexDirection: "column", gap: 14, paddingRight: 4 }}>
-        {/* Tier badge */}
-        <div className={`tier-badge ${TIER_BG[tier]}`}>
-          <div className="glyph">{tierGlyph(tier)}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="label-tier">{TIER_TH[tier]}</div>
-            <div className="label-en">{TIER_EN[tier]} · flash flood risk</div>
+      <div className="drawer-scroll" style={{ display: "flex", flexDirection: "column", gap: 18, paddingRight: 4 }}>
+        {/* Tier banner — severity + what it means, one card */}
+        <div className={`tier-banner tbn-${tier}`}>
+          <div className="tb-head">
+            <div className="tb-glyph">{tierGlyph(tier)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="tb-label">{TIER_TH[tier]}</div>
+              <div className="tb-en">{TIER_EN[tier]} · flash flood risk</div>
+            </div>
           </div>
-        </div>
-
-        {/* Action verb */}
-        <div className="action" style={{ color: riskMeta[tier].color }}>
-          <span>{tierActionTH(tier)}</span>
+          <div className="tb-action">{tierActionTH(tier)}</div>
         </div>
 
         {/* Contributions */}
         <div>
-          <div className="caps" style={{ marginBottom: 8 }}>
-            ทำไมถึงระดับนี้
-          </div>
+          <div className="dw-section-title">ทำไมถึงระดับนี้</div>
           <div className="contrib">
             <ContribRow name="ภูมิประเทศ" en="Terrain" cls="terrain" pct={terrain * 100} />
             <ContribRow
@@ -1938,26 +1950,33 @@ function Drawer({
           </div>
         </div>
 
-        {/* Buildings exposure — kept because it's an inventory count
-         * (how many homes), not a risk score. */}
+        {/* Buildings exposure — inventory count, not a risk score. */}
         {p.buildings !== undefined ? (
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 10,
-              background: "rgba(120,200,200,0.06)",
-              border: "1px solid var(--hairline)",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-            }}
-          >
-            <Building2 size={22} style={{ color: "var(--ink-2)", flex: "none" }} />
+          <div className="dw-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(64,224,189,0.10)",
+                color: "var(--accent)",
+                flex: "none",
+              }}
+            >
+              <Building2 size={19} strokeWidth={2} />
+            </span>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="caps">บ้านเรือนในตำบล</div>
-              <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2 }}>
+              <div className="dw-section-title" style={{ marginBottom: 2 }}>
+                บ้านเรือนในตำบล
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>
                 <span className="num-mono">{formatNumber(p.buildings)}</span>
-                <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 6 }}>หลัง</span>
+                <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 6, fontWeight: 500 }}>
+                  หลัง · Open Buildings v3
+                </span>
               </div>
             </div>
           </div>
@@ -1965,10 +1984,8 @@ function Drawer({
 
         {/* Top risk */}
         <div>
-          <div className="caps" style={{ marginBottom: 6 }}>
-            ตำบลเสี่ยงสูงตอนนี้
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="dw-section-title">ตำบลเสี่ยงสูงตอนนี้</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {topRiskList.map((r) => {
               const t = r.liveTier;
               const isCurrent = r.feature.properties.GID_3 === p.GID_3;
@@ -1976,30 +1993,35 @@ function Drawer({
                 <button
                   key={r.feature.properties.GID_3}
                   onClick={() => onPickRow(r.feature.properties.GID_3)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 6px",
-                    borderRadius: 8,
-                    background: isCurrent ? "rgba(64,224,189,0.08)" : "transparent",
-                    color: "var(--ink)",
-                    border: 0,
-                    textAlign: "left",
-                    cursor: "pointer",
-                    width: "100%",
-                  }}
+                  className={`dw-row ${isCurrent ? "current" : ""}`}
                 >
-                  <span style={{ width: 8, height: 8, borderRadius: 999, background: riskMeta[t].color }} />
+                  <span
+                    style={{
+                      width: 3,
+                      alignSelf: "stretch",
+                      borderRadius: 2,
+                      background: riskMeta[t].color,
+                      flex: "none",
+                    }}
+                  />
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
                       ตำบล{r.feature.properties.NAME_3}
                     </span>
-                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
                       อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
                     </span>
                   </span>
-                  <span className={`tier ${TIER_PILL[t]}`} style={{ fontSize: 11 }}>
+                  <span className={`tier ${TIER_PILL[t]}`} style={{ fontSize: 10.5, padding: "3px 8px" }}>
                     {TIER_TH[t]}
                   </span>
                 </button>

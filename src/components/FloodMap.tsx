@@ -221,6 +221,10 @@ const PROVINCE_NAMES: Record<string, string> = {
 };
 const thaiName = (slug: string) => PROVINCE_NAMES[slug] ?? slug;
 
+/** Thai อำเภอ name when GADM supplied one (NL_NAME_2), else the romanised
+ *  NAME_2. GADM 4.1 has no Thai tambon names, so NAME_3 stays romanised. */
+const amphoeName = (p: TambonRow["feature"]["properties"]) => p.NL_NAME_2 ?? p.NAME_2;
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("th-TH").format(value);
 }
@@ -654,7 +658,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return rows
       .filter((r) => {
         const p = r.feature.properties;
-        const hay = `${p.NAME_3} ${p.NAME_2} ${p.NAME_1} ${thaiName(p.NAME_1)}`.toLocaleLowerCase("th-TH");
+        // Match romanised and Thai spellings so "แม่สรวย" and "MaeSuai"
+        // both find the same tambon.
+        const hay = `${p.NAME_3} ${p.VARNAME_3 ?? ""} ${p.NAME_2} ${p.NL_NAME_2 ?? ""} ${p.NAME_1} ${thaiName(p.NAME_1)}`.toLocaleLowerCase(
+          "th-TH",
+        );
         return hay.includes(q);
       })
       .slice(0, 8);
@@ -818,7 +826,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (path.feature?.properties?.GID_3 === selectedGid) return;
           polyLayerRef.current?.resetStyle(layer as Leaflet.Path);
         });
-        layer.bindTooltip(`<b>${p.NAME_3}</b> · ${p.NAME_2}<br/>${thaiName(p.NAME_1)}`, {
+        layer.bindTooltip(`<b>${p.NAME_3}</b> · อ.${amphoeName(p)}<br/>จ.${thaiName(p.NAME_1)}`, {
           direction: "top",
           sticky: true,
           opacity: 0.9,
@@ -1917,7 +1925,7 @@ function HeroRibbon({
               <span className="hero-tambon" style={{ fontSize: 15.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "1 1 auto", minWidth: 0 }}>
                 ตำบล{row.feature.properties.NAME_3}
                 <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
-                  {" "}อ.{row.feature.properties.NAME_2} · จ.{thaiName(row.feature.properties.NAME_1)}
+                  {" "}อ.{amphoeName(row.feature.properties)} · จ.{thaiName(row.feature.properties.NAME_1)}
                 </span>
               </span>
               <span className={`tier ${TIER_PILL[tier]} hero-tier-pill`} style={{ flex: "none" }}>
@@ -1993,7 +2001,7 @@ function HeroRibbon({
                       ตำบล{r.feature.properties.NAME_3}
                     </span>
                     <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
-                      อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
+                      อ.{amphoeName(r.feature.properties)} · {thaiName(r.feature.properties.NAME_1)}
                     </span>
                   </span>
                   <span className={`tier ${TIER_PILL[r.liveTier]}`} style={{ fontSize: 11 }}>
@@ -2123,7 +2131,7 @@ function Drawer({
             ตำบล{p.NAME_3}
           </div>
           <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 8 }}>
-            อ.{p.NAME_2} · จ.{thaiName(p.NAME_1)}
+            อ.{amphoeName(p)} · จ.{thaiName(p.NAME_1)}
             {isUser ? (
               <span
                 style={{
@@ -2283,7 +2291,7 @@ function Drawer({
                       ตำบล{r.feature.properties.NAME_3}
                     </span>
                     <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
-                      อ.{r.feature.properties.NAME_2} · {thaiName(r.feature.properties.NAME_1)}
+                      อ.{amphoeName(r.feature.properties)} · {thaiName(r.feature.properties.NAME_1)}
                     </span>
                   </span>
                   <span className={`tier ${TIER_PILL[t]}`} style={{ fontSize: 10.5, padding: "3px 8px" }}>

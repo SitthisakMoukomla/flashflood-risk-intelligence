@@ -11,6 +11,8 @@ export type TambonProperties = {
   NAME_2: string;
   NAME_1: string;
   TYPE_3: string;
+  /** Alternate romanisations from GADM, pipe-separated (may be absent). */
+  VARNAME_3?: string | null;
   cells: number;
   risk_mean: number;
   risk_max: number;
@@ -25,6 +27,9 @@ export type TambonProperties = {
   /** Added by 08_buildings_per_tambon.py — present after the buildings refresh runs. */
   buildings?: number;
   building_area_km2?: number;
+  /** Thai อำเภอ name, added by 11_add_thai_names.py from GADM NL_NAME_2.
+   *  GADM has no Thai tambon names, so NAME_3 stays romanised. */
+  NL_NAME_2?: string;
 };
 
 export type TambonFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon, TambonProperties>;

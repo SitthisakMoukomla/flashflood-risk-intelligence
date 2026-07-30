@@ -173,7 +173,11 @@ a { color: inherit; }
 }
 
 /* ─── Hero ribbon backgrounds ───────────────────────────────────── */
-.hero { position: relative; color: var(--ink); overflow: hidden; }
+/* overflow must stay visible: the search-results dropdown renders inside
+   the hero and extends below it — overflow:hidden clipped it to 8px and
+   made search look completely dead. Gradients are backgrounds and the
+   pulse is box-shadow, so nothing needs the clip. */
+.hero { position: relative; color: var(--ink); }
 .hero-low {
   background:
     radial-gradient(ellipse 120% 80% at 50% -10%, rgba(64, 224, 189, 0.40), transparent 60%),

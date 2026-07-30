@@ -137,9 +137,12 @@ a { color: inherit; }
   background: var(--panel);
   border: 1px solid var(--hairline-2);
   border-radius: var(--r-md);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    0 12px 32px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* ─── Risk pill (small chip) ────────────────────────────────────── */
@@ -233,70 +236,110 @@ a { color: inherit; }
 }
 
 /* ─── Mode picker (vertical desktop) ────────────────────────────── */
-.mode { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.mode { display: flex; flex-direction: column; gap: 3px; padding: 7px; }
 .mode-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; border-radius: var(--r-sm);
+  position: relative;
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: 10px;
   text-align: left; color: var(--ink-2);
   font-size: 14px; line-height: 1.2;
   background: transparent;
   border: 0;
   width: 100%;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
-.mode-item:hover { background: rgba(64, 224, 189, 0.06); color: var(--ink); }
-.mode-item.active { background: rgba(64, 224, 189, 0.14); color: var(--ink); }
+.mode-item:hover { background: rgba(64, 224, 189, 0.07); color: var(--ink); }
+.mode-item.active {
+  background: linear-gradient(135deg, rgba(64, 224, 189, 0.17), rgba(64, 224, 189, 0.08));
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(64, 224, 189, 0.28);
+}
+.mode-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 9px; bottom: 9px;
+  width: 3px; border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
 .mode-item .mi-glyph {
   width: 22px; height: 22px;
   display: flex; flex: none;
+  align-items: center; justify-content: center;
   color: var(--ink-3);
+  transition: color 0.16s ease;
 }
 .mode-item.active .mi-glyph { color: var(--accent); }
-.mode-item .mi-label { font-weight: 600; font-size: 14px; }
-.mode-item .mi-desc  { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; line-height: 1.4; }
+.mode-item .mi-label { display: block; font-weight: 600; font-size: 13.5px; letter-spacing: -0.1px; }
+.mode-item .mi-desc  {
+  display: block;
+  font-size: 11px; color: var(--ink-3);
+  margin-top: 3px; line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .mode-item.active .mi-desc { color: var(--ink-2); }
 
 /* ─── Layer toggle (radar / precip / buildings) ─────────────────── */
 .toggle {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px;
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 12px;
   font-size: 13px; color: var(--ink-2);
   width: 100%;
   background: transparent;
   border: 0;
   cursor: pointer;
   text-align: left;
-  border-radius: var(--r-sm);
+  border-radius: 9px;
+  transition: background 0.15s ease;
 }
-.toggle:hover { background: rgba(64, 224, 189, 0.04); }
-.toggle .tg-glyph { width: 18px; height: 18px; display: flex; flex: none; color: var(--ink-3); }
-.toggle .tg-label { display: block; font-weight: 600; font-size: 13px; color: var(--ink); }
-.toggle .tg-hint  { display: block; font-size: 11px; color: var(--ink-3); margin-top: 1px; }
+.toggle:hover { background: rgba(64, 224, 189, 0.06); }
+.toggle .tg-glyph {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; flex: none; align-items: center; justify-content: center;
+  color: var(--ink-3);
+  background: rgba(120, 200, 200, 0.07);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.toggle .tg-label {
+  display: block; font-weight: 600; font-size: 12.5px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.toggle .tg-hint  {
+  display: block; font-size: 10.5px; color: var(--ink-3); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .toggle .tg-sw {
-  width: 32px; height: 18px; border-radius: 999px;
-  background: rgba(120, 200, 200, 0.18); position: relative; flex: none;
-  transition: background 0.15s;
+  width: 34px; height: 20px; border-radius: 999px;
+  background: rgba(120, 200, 200, 0.16); position: relative; flex: none;
+  transition: background 0.18s ease;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 .toggle .tg-sw::after {
   content: ""; position: absolute; top: 2px; left: 2px;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: var(--ink-2); transition: 0.15s;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--ink-2); transition: 0.18s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
-.toggle.on .tg-glyph  { color: var(--accent); }
+.toggle.on .tg-glyph  { color: var(--accent); background: rgba(64, 224, 189, 0.13); }
 .toggle.on .tg-sw     { background: var(--accent); }
 .toggle.on .tg-sw::after { left: 16px; background: var(--bg); }
 
 /* ─── Bottom legend bar ─────────────────────────────────────────── */
 .legend {
   display: flex; align-items: center; gap: 14px;
-  padding: 10px 14px;
+  padding: 9px 14px;
   font-size: 12px;
   flex-wrap: wrap;
   row-gap: 6px;
 }
-.legend-chip { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
-.legend-chip .sw { width: 12px; height: 12px; border-radius: 3px; }
+.legend-chip { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-weight: 500; }
+.legend-chip .sw {
+  width: 12px; height: 12px; border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
 .legend-meta {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -360,11 +403,16 @@ a { color: inherit; }
 .search {
   display: flex; align-items: center; gap: 8px;
   padding: 9px 12px;
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   background: rgba(7, 19, 24, 0.65);
   border: 1px solid var(--hairline-2);
   color: var(--ink);
   font-size: 13.5px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.search:focus-within {
+  border-color: rgba(64, 224, 189, 0.55);
+  box-shadow: 0 0 0 3px rgba(64, 224, 189, 0.12);
 }
 .search input {
   background: transparent; border: 0; outline: 0;

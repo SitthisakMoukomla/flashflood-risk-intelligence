@@ -382,12 +382,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
   // Drawer defaults to closed on phones (the bottom sheet eats too much
-  // map otherwise). On desktop the right-rail drawer is the side panel
-  // so it makes sense to start open.
-  const [drawerOpen, setDrawerOpen] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 821px)").matches;
-  });
+  // map otherwise). SSR always renders open; a post-mount effect closes it
+  // on small screens — reading matchMedia in the useState initializer
+  // caused a hydration mismatch.
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 820px)").matches) {
+      setDrawerOpen(false);
+    }
+  }, []);
   const [methodOpen, setMethodOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1611,7 +1614,7 @@ function HeroRibbon({
       className={`hero hero-${tier} ${pulseClass} hero-mobile`}
       style={{ position: "absolute", top: 0, left: 0, right: 0, zIndex: 22, padding: "12px 16px" }}
     >
-      <div className="hero-row" style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44, flexWrap: "wrap" }}>
+      <div className="hero-row" style={{ display: "flex", alignItems: "center", gap: 14, minHeight: 44, flexWrap: "nowrap" }}>
         {/* Wordmark — desktop only */}
         <div
           className="hero-wordmark"
@@ -1661,10 +1664,20 @@ function HeroRibbon({
               <span className={`tier ${TIER_PILL[tier]} hero-tier-pill`} style={{ flex: "none" }}>
                 {TIER_TH[tier]}
               </span>
-              <span className="hero-action" style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0 }}>
+              <span
+                className="hero-action"
+                style={{
+                  color: "var(--ink-2)",
+                  fontSize: 13,
+                  minWidth: 0,
+                  flex: "1 1 auto",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 · {action}
               </span>
-              <span style={{ marginLeft: "auto" }} aria-hidden />
             </>
           ) : (
             <span style={{ color: "var(--ink-2)", fontSize: 13 }}>

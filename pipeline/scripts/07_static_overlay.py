@@ -33,28 +33,27 @@ PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
 PNG_OUT = PUBLIC_DATA / "static_overlay.png"
 META_OUT = PUBLIC_DATA / "static_overlay_meta.json"
 
-# Diverging green→yellow→red ramp matching `riskRampColor` in src/lib/tambon.ts.
-RAMP = [
-    (0.00, (26, 152, 80)),
-    (0.25, (166, 217, 106)),
-    (0.50, (254, 224, 139)),
-    (0.75, (253, 174, 97)),
-    (1.00, (215, 48, 39)),
+# Weather-warning-style bands: solid tier colours with hard class edges.
+# (min_t, (r, g, b), alpha) — matches LIVE_BANDS in FloodMap.tsx so the
+# static and live layers read as the same visual language.
+BANDS = [
+    (0.00, (26, 152, 80), 130),
+    (0.25, (254, 224, 139), 190),
+    (0.50, (253, 174, 97), 210),
+    (0.70, (215, 48, 39), 225),
 ]
 
 
-def ramp_lookup(t: np.ndarray) -> np.ndarray:
-    """Interpolate t∈[0,1] across RAMP; returns (h, w, 3) uint8."""
-    out = np.zeros(t.shape + (3,), dtype=np.float32)
-    for i in range(len(RAMP) - 1):
-        s0, c0 = RAMP[i]
-        s1, c1 = RAMP[i + 1]
-        m = (t >= s0) & (t <= s1)
-        f = (t - s0) / max(s1 - s0, 1e-9)
+def ramp_lookup(t: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Quantise t∈[0,1] into solid colour bands; returns ((h,w,3) uint8, (h,w) alpha)."""
+    rgb = np.zeros(t.shape + (3,), dtype=np.uint8)
+    alpha = np.zeros(t.shape, dtype=np.uint8)
+    for min_t, color, a in BANDS:
+        m = t >= min_t
         for ch in range(3):
-            out[..., ch] = np.where(m, c0[ch] + f * (c1[ch] - c0[ch]), out[..., ch])
-    out = np.clip(out, 0, 255)
-    return out.astype(np.uint8)
+            rgb[..., ch] = np.where(m, color[ch], rgb[..., ch])
+        alpha = np.where(m, a, alpha).astype(np.uint8)
+    return rgb, alpha
 
 
 @click.command()
@@ -92,8 +91,8 @@ def main(max_dim: int) -> None:
     click.echo(f"[norm] 2-98 pct = [{vmin:.3f}, {vmax:.3f}]")
     t = np.clip((susc - vmin) / max(vmax - vmin, 1e-9), 0, 1)
 
-    rgb = ramp_lookup(t)  # (h, w, 3)
-    alpha = np.where(valid, 200, 0).astype(np.uint8)  # 200/255 ≈ 78% opaque
+    rgb, band_alpha = ramp_lookup(t)  # (h, w, 3), (h, w)
+    alpha = np.where(valid, band_alpha, 0).astype(np.uint8)
 
     rgba = np.dstack([rgb, alpha])
     Image.fromarray(rgba, "RGBA").save(PNG_OUT, optimize=True)
@@ -108,7 +107,7 @@ def main(max_dim: int) -> None:
         "height": out_h,
         "norm_low": vmin,
         "norm_high": vmax,
-        "ramp": "green→yellow→red (matches riskRampColor)",
+        "ramp": "banded green/yellow/orange/red at t=0/0.25/0.50/0.70",
     }
     META_OUT.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
     click.echo(f"[write] {META_OUT.name}")

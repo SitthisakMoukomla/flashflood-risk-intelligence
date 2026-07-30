@@ -31,8 +31,6 @@ import {
   buildTambonRows,
   computeLiveGrid,
   layerModes,
-  riskRampColor,
-  wetnessRampRGBA,
   type LayerMode,
   type TambonCollection,
   type TambonRow,
@@ -269,41 +267,89 @@ function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.M
   return false;
 }
 
-function renderGridToDataURL(
+type Band = { min: number; rgba: [number, number, number, number] };
+
+/** Weather-warning-style banded raster: bilinear-upsample the coarse grid,
+ *  then quantise into solid colour classes. Sharp, bold zones instead of
+ *  the foggy blob the browser makes of a 29×24 canvas. */
+function renderBandedGridToDataURL(
   cols: number,
   rows: number,
   values: number[] | Float32Array,
   cap: number,
-  ramp: (t: number) => [number, number, number, number],
-  /** Optional 0/1 mask (or any non-zero == inside). Cells where mask[i] is
-   *  falsy render fully transparent — used to clip overlays to the
-   *  Thailand AOI (the gridded data covers the bbox, which spills into
-   *  Myanmar/Laos). */
+  bands: Band[], // ascending by min; value below bands[0].min → transparent
   mask?: number[] | Float32Array | null,
+  scale = 10,
 ): string | null {
   if (typeof document === "undefined") return null;
+  const W = cols * scale;
+  const H = rows * scale;
   const canvas = document.createElement("canvas");
-  canvas.width = cols;
-  canvas.height = rows;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
-  const img = ctx.createImageData(cols, rows);
+  const img = ctx.createImageData(W, H);
   const buf = img.data;
-  for (let i = 0; i < cols * rows; i++) {
-    if (mask && !mask[i]) {
-      buf[i * 4 + 3] = 0;
-      continue;
+
+  const sample = (arr: number[] | Float32Array, gx: number, gy: number): number => {
+    const x0 = Math.max(0, Math.min(cols - 1, Math.floor(gx)));
+    const y0 = Math.max(0, Math.min(rows - 1, Math.floor(gy)));
+    const x1 = Math.min(cols - 1, x0 + 1);
+    const y1 = Math.min(rows - 1, y0 + 1);
+    const fx = Math.max(0, Math.min(1, gx - x0));
+    const fy = Math.max(0, Math.min(1, gy - y0));
+    const v00 = Number(arr[y0 * cols + x0]) || 0;
+    const v10 = Number(arr[y0 * cols + x1]) || 0;
+    const v01 = Number(arr[y1 * cols + x0]) || 0;
+    const v11 = Number(arr[y1 * cols + x1]) || 0;
+    return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+  };
+
+  for (let y = 0; y < H; y++) {
+    const gy = (y + 0.5) / scale - 0.5;
+    for (let x = 0; x < W; x++) {
+      const gx = (x + 0.5) / scale - 0.5;
+      const o = (y * W + x) * 4;
+      if (mask && sample(mask, gx, gy) < 0.5) {
+        buf[o + 3] = 0;
+        continue;
+      }
+      const t = Math.min(1, Math.max(0, sample(values, gx, gy) / cap));
+      let band: Band | null = null;
+      for (const b of bands) {
+        if (t >= b.min) band = b;
+        else break;
+      }
+      if (!band) {
+        buf[o + 3] = 0;
+        continue;
+      }
+      buf[o] = band.rgba[0];
+      buf[o + 1] = band.rgba[1];
+      buf[o + 2] = band.rgba[2];
+      buf[o + 3] = band.rgba[3];
     }
-    const t = Math.min(1, Math.max(0, values[i] / cap));
-    const c = ramp(t);
-    buf[i * 4] = c[0];
-    buf[i * 4 + 1] = c[1];
-    buf[i * 4 + 2] = c[2];
-    buf[i * 4 + 3] = c[3];
   }
   ctx.putImageData(img, 0, 0);
   return canvas.toDataURL();
 }
+
+// Live risk bands — tier colours, solid and bold.
+const LIVE_BANDS: Band[] = [
+  { min: 0.08, rgba: [26, 152, 80, 130] },
+  { min: 0.2, rgba: [254, 224, 139, 190] },
+  { min: 0.4, rgba: [253, 174, 97, 210] },
+  { min: 0.55, rgba: [215, 48, 39, 225] },
+];
+
+// Wetness bands — mm of 7-day rain against the 80 mm cap.
+const WETNESS_BANDS: Band[] = [
+  { min: 0.06, rgba: [127, 208, 240, 140] }, // ~5 mm
+  { min: 0.19, rgba: [59, 130, 246, 180] }, // ~15 mm
+  { min: 0.38, rgba: [29, 78, 216, 205] }, // ~30 mm
+  { min: 0.63, rgba: [30, 41, 120, 225] }, // ~50 mm+
+];
 
 function scoreOfRow(row: TambonRow, mode: LayerMode | null): number {
   if (mode === "wetness") return row.wetnessNorm;
@@ -783,18 +829,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     if (layerMode !== "wetness" || !grid) return;
     const aoiMask = grid.static_norm; // 0 outside AOI (sampled from susceptibility.tif)
-    const url = renderGridToDataURL(
+    const url = renderBandedGridToDataURL(
       grid.cols,
       grid.rows,
       grid.rain_7d_mm,
       grid.wetness_norm_cap_mm,
-      wetnessRampRGBA,
+      WETNESS_BANDS,
       aoiMask,
     );
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;
     wetnessOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
-      opacity: 0.7,
+      opacity: 0.88,
       interactive: false,
       zIndex: Z_HAZARD,
     }).addTo(map);
@@ -812,25 +858,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (layerMode !== "live" || !grid) return;
     const live = computeLiveGrid(grid);
     const aoiMask = grid.static_norm;
-    const url = renderGridToDataURL(
-      grid.cols,
-      grid.rows,
-      live,
-      1.0,
-      (t) => {
-        const c = riskRampColor(t);
-        const m = c.match(/rgb\((\d+),(\d+),(\d+)\)/);
-        if (!m) return [0, 0, 0, 0];
-        const [r, g, b] = [+m[1], +m[2], +m[3]];
-        const a = Math.round(Math.min(220, 80 + 200 * t));
-        return [r, g, b, a];
-      },
-      aoiMask,
-    );
+    const url = renderBandedGridToDataURL(grid.cols, grid.rows, live, 1.0, LIVE_BANDS, aoiMask);
     if (!url) return;
     const [w, s, e, n] = grid.grid_bbox;
     liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
-      opacity: 0.78,
+      opacity: 0.88,
       interactive: false,
       zIndex: Z_HAZARD,
     }).addTo(map);

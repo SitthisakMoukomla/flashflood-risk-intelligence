@@ -10,6 +10,8 @@ import {
   Locate,
   MapPin,
   Mountain,
+  Pause,
+  Play,
   RefreshCw,
   Radar,
   Search,
@@ -45,8 +47,13 @@ type FloodMapProps = {
   sources: SourceNote[];
 };
 
+type RadarFrame = { time: number; path: string; nowcast: boolean };
+
 type RainLayerPayload = {
   generatedAt: string;
+  host: string;
+  frames: RadarFrame[];
+  latestIndex: number;
   frameTime: string;
   tileUrl: string;
   source: string;
@@ -372,7 +379,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const mapRef = useRef<Leaflet.Map | null>(null);
   const leafletRef = useRef<typeof Leaflet | null>(null);
   const polyLayerRef = useRef<LeafletGeoJSON | null>(null);
-  const rainLayerRef = useRef<Leaflet.TileLayer | null>(null);
   const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
@@ -383,6 +389,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const userMarkerRef = useRef<Leaflet.LayerGroup | null>(null);
   const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const waterStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const radarCacheRef = useRef<Map<string, Leaflet.TileLayer>>(new Map());
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
@@ -406,6 +413,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   // again to toggle it off.
   const [layerMode, setLayerMode] = useState<LayerMode | null>("live");
   const [showRainOverlay, setShowRainOverlay] = useState(false);
+  const [radarIdx, setRadarIdx] = useState(0);
+  const [radarPlaying, setRadarPlaying] = useState(true);
   const [showBuildings, setShowBuildings] = useState(false);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
@@ -892,28 +901,76 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(map);
   }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid, selectedRow]);
 
-  // Radar overlay
+  // Reset playback position whenever a fresh radar payload arrives.
+  useEffect(() => {
+    if (rainLayer?.frames?.length) {
+      setRadarIdx(Math.min(rainLayer.latestIndex ?? 0, rainLayer.frames.length - 1));
+    }
+  }, [rainLayer]);
+
+  // Radar overlay — animated. One cached tile layer per frame; the active
+  // frame gets opacity, the next frame is pre-added at opacity 0 so its
+  // tiles are already loaded when the playhead reaches it.
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
     if (!L || !map || !isMapReady) return;
-    if (rainLayerRef.current) {
-      rainLayerRef.current.removeFrom(map);
-      rainLayerRef.current = null;
+    const cache = radarCacheRef.current;
+
+    if (!showRainOverlay || !rainLayer?.frames?.length) {
+      for (const l of cache.values()) l.removeFrom(map);
+      cache.clear();
+      return;
     }
-    if (showRainOverlay && rainLayer?.tileUrl) {
-      rainLayerRef.current = L.tileLayer(rainLayer.tileUrl, {
-        opacity: 0.55,
-        zIndex: Z_RADAR,
-        // RainViewer free tier (size 256, color scheme 2) only serves real
-        // tiles up to z=7. z>=8 returns the "Zoom Level Not Supported"
-        // placeholder. Cap maxNativeZoom and let Leaflet upscale.
-        maxNativeZoom: 7,
-        maxZoom: 18,
-        attribution: "RainViewer",
-      }).addTo(map);
+
+    const frames = rainLayer.frames;
+    const idx = Math.min(radarIdx, frames.length - 1);
+
+    // Drop cached layers for frames that fell out of the animation window
+    // (happens after the 15-minute payload refresh).
+    const validPaths = new Set(frames.map((f) => f.path));
+    for (const [path, l] of cache) {
+      if (!validPaths.has(path)) {
+        l.removeFrom(map);
+        cache.delete(path);
+      }
     }
-  }, [isMapReady, showRainOverlay, rainLayer]);
+
+    const layerOf = (f: RadarFrame): Leaflet.TileLayer => {
+      let l = cache.get(f.path);
+      if (!l) {
+        l = L.tileLayer(`${rainLayer.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+          opacity: 0,
+          zIndex: Z_RADAR,
+          // RainViewer free tier only serves real tiles up to z=7;
+          // beyond that Leaflet upscales.
+          maxNativeZoom: 7,
+          maxZoom: 18,
+          attribution: "RainViewer",
+        });
+        cache.set(f.path, l);
+      }
+      if (!map.hasLayer(l)) l.addTo(map);
+      return l;
+    };
+
+    layerOf(frames[idx]);
+    layerOf(frames[(idx + 1) % frames.length]); // preload next
+    for (const [path, l] of cache) {
+      l.setOpacity(path === frames[idx].path ? 0.6 : 0);
+    }
+  }, [isMapReady, showRainOverlay, rainLayer, radarIdx]);
+
+  // Radar playback clock — 650 ms per frame, 1.6 s hold on the last frame.
+  useEffect(() => {
+    if (!showRainOverlay || !radarPlaying || !rainLayer?.frames?.length) return;
+    const n = rainLayer.frames.length;
+    const atEnd = radarIdx >= n - 1;
+    const t = window.setTimeout(() => {
+      setRadarIdx((i) => (i >= n - 1 ? 0 : i + 1));
+    }, atEnd ? 1600 : 650);
+    return () => window.clearTimeout(t);
+  }, [showRainOverlay, radarPlaying, radarIdx, rainLayer]);
 
   // 6e) HII ThaiWater rain-station observations (1,400+ gauges in N TH)
   useEffect(() => {
@@ -1377,6 +1434,82 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           </span>
         </div>
       </div>
+
+      {/* Radar playback control — visible whenever the animated radar is on */}
+      {showRainOverlay && rainLayer?.frames?.length ? (
+        <div
+          className="glass"
+          style={{
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            bottom: 68,
+            zIndex: 19,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 14px",
+            borderRadius: 999,
+            maxWidth: "calc(100% - 24px)",
+          }}
+        >
+          <button
+            onClick={() => setRadarPlaying((v) => !v)}
+            aria-label={radarPlaying ? "หยุด" : "เล่น"}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 999,
+              border: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(64,224,189,0.16)",
+              color: "var(--accent)",
+              cursor: "pointer",
+              flex: "none",
+            }}
+          >
+            {radarPlaying ? <Pause size={14} strokeWidth={2.4} /> : <Play size={14} strokeWidth={2.4} />}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={rainLayer.frames.length - 1}
+            value={Math.min(radarIdx, rainLayer.frames.length - 1)}
+            onChange={(e) => {
+              setRadarPlaying(false);
+              setRadarIdx(Number(e.target.value));
+            }}
+            style={{ width: 150, accentColor: "var(--accent)" }}
+            aria-label="เลือกเวลาเรดาร์"
+          />
+          <span className="num-mono" style={{ fontSize: 12, color: "var(--ink)", whiteSpace: "nowrap" }}>
+            {formatTimeBKK(
+              new Date(rainLayer.frames[Math.min(radarIdx, rainLayer.frames.length - 1)].time * 1000).toISOString(),
+            )}{" "}
+            น.
+          </span>
+          {rainLayer.frames[Math.min(radarIdx, rainLayer.frames.length - 1)].nowcast ? (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: "var(--r-high)",
+                background: "rgba(253,174,97,0.14)",
+                border: "1px solid rgba(253,174,97,0.4)",
+                borderRadius: 999,
+                padding: "2px 8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              คาดการณ์
+            </span>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Mobile-only floating action cluster — exposes the controls that
           live in the desktop side panels. */}

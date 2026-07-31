@@ -676,3 +676,118 @@ a { color: inherit; }
 @media (min-width: 1101px) {
   .mobile-only { display: none !important; }
 }
+
+/* ─── /maesai — dedicated Mae Sai watch page ────────────────────── */
+.ms-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px
+    calc(40px + env(safe-area-inset-bottom, 0px));
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 120% 60% at 50% -10%, rgba(64, 224, 189, 0.07), transparent 60%),
+    var(--bg);
+}
+.ms-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+.ms-back, .ms-refresh {
+  width: 38px; height: 38px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; border: 1px solid var(--hairline-2);
+  background: rgba(120, 200, 200, 0.06); color: var(--ink-2);
+  cursor: pointer; text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ms-back:hover, .ms-refresh:hover {
+  color: var(--ink); border-color: rgba(64, 224, 189, 0.5); background: rgba(64, 224, 189, 0.10);
+}
+.ms-title {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.3px;
+}
+.ms-sub { margin: 4px 0 0; font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+.ms-err {
+  margin-bottom: 14px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(215, 48, 39, 0.14); border: 1px solid rgba(215, 48, 39, 0.45);
+  color: #ffd9d9; font-size: 12.5px;
+}
+
+.ms-hero {
+  border: 1px solid var(--hairline-2); border-radius: 16px;
+  padding: 18px; margin-bottom: 26px;
+}
+.ms-hero.ms-skeleton { color: var(--ink-3); font-size: 13px; }
+.ms-hero-label { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.ms-hero-row {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; margin-top: 8px; flex-wrap: wrap;
+}
+.ms-hero-num { font-size: 54px; font-weight: 700; line-height: 1; letter-spacing: -2px; }
+.ms-hero-unit {
+  font-size: 14px; color: var(--ink-3); font-weight: 500;
+  letter-spacing: 0; margin-left: 8px;
+}
+.ms-hero-side { text-align: right; }
+.ms-hero-state { font-size: 17px; font-weight: 700; }
+.ms-hero-delta { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
+.ms-hero-time { font-size: 11px; color: var(--ink-4); margin-top: 2px; }
+.ms-alert {
+  margin-top: 14px; padding: 9px 12px; border-radius: 9px;
+  background: rgba(253, 174, 97, 0.12); border: 1px solid rgba(253, 174, 97, 0.42);
+  font-size: 12.5px; line-height: 1.5;
+}
+
+.ms-h2 {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.11em; color: var(--ink-3); margin: 0 0 12px;
+}
+.ms-chain { list-style: none; margin: 0 0 28px; padding: 0; }
+.ms-node { display: flex; gap: 14px; }
+.ms-rail { width: 12px; flex: none; display: flex; flex-direction: column; align-items: center; }
+.ms-dot {
+  width: 12px; height: 12px; border-radius: 50%; flex: none; margin-top: 6px;
+  box-shadow: 0 0 0 3px rgba(7, 19, 24, 0.9);
+}
+.ms-line { width: 2px; flex: 1; background: linear-gradient(180deg, rgba(120,200,200,0.35), rgba(120,200,200,0.12)); }
+.ms-node-body { flex: 1; min-width: 0; padding-bottom: 18px; }
+.ms-node.is-bridge .ms-node-body {
+  background: rgba(64, 224, 189, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(64, 224, 189, 0.24);
+  border-radius: 12px; padding: 10px 12px 12px; margin-bottom: 18px;
+}
+.ms-node-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ms-node-name {
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ms-node.is-bridge .ms-node-name { font-weight: 700; }
+.ms-node-sp { font-size: 18px; font-weight: 700; flex: none; }
+.ms-node-meta {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; font-size: 11px; color: var(--ink-3); margin-top: 2px;
+}
+.ms-bar {
+  position: relative; height: 7px; border-radius: 4px; margin-top: 9px;
+  background: rgba(7, 19, 24, 0.65); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+.ms-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s cubic-bezier(0.25, 1, 0.35, 1); }
+.ms-bar-bank { position: absolute; right: 0; top: 0; bottom: 0; width: 2px; background: rgba(215, 48, 39, 0.65); }
+
+.ms-card {
+  border: 1px solid var(--hairline); border-radius: 14px;
+  background: rgba(120, 200, 200, 0.04); padding: 14px; margin-bottom: 26px;
+}
+.ms-card.ms-empty { font-size: 12.5px; color: var(--ink-3); line-height: 1.6; }
+.ms-chart-meta {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11px; color: var(--ink-3); margin-bottom: 10px;
+}
+.ms-chart { width: 100%; height: 120px; display: block; }
+.ms-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 11px; color: var(--ink-2); }
+.ms-legend-item { display: flex; align-items: center; gap: 6px; }
+.ms-legend-sw { width: 16px; border-radius: 2px; }
+
+.ms-note { font-size: 12px; color: var(--ink-2); line-height: 1.7; }
+.ms-note p { margin: 0 0 10px; }
+.ms-note b { color: var(--ink); }
+.ms-disclaim { color: var(--ink-4) !important; font-size: 11px; }

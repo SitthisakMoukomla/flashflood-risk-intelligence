@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   Building2,
   ChevronDown,
+  ChevronRight,
   Droplets,
   Info,
   Layers,
@@ -19,6 +20,7 @@ import {
   Waves,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import type * as Leaflet from "leaflet";
 import type { GeoJSON as LeafletGeoJSON } from "leaflet";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -30,6 +32,11 @@ import {
   type SourceNote,
   tierFromNorm,
 } from "@/lib/risk-intelligence";
+import {
+  bankPercentColor,
+  bankPercentLabel,
+  MAESAI_CHAIN,
+} from "@/lib/maesai";
 import {
   buildTambonRows,
   computeLiveGrid,
@@ -127,16 +134,6 @@ type ThaiWaterLevelStation = {
   };
 };
 
-/** Mae Sai (Sai river) early-warning chain, ordered upstream → downstream.
- *  HII oldcodes; these gauges were installed on the Myanmar side of the
- *  border specifically for Mae Sai flood warning. */
-const MAESAI_CHAIN: { code: string; role: string; note: string }[] = [
-  { code: "MYA001", role: "ต้นน้ำสุด", note: "~21 กม. เหนือสะพาน" },
-  { code: "MYA002", role: "ต้นน้ำ", note: "~2.5 กม. เหนือสะพาน" },
-  { code: "MYA004", role: "สะพานมิตรภาพ", note: "จุดเฝ้าระวังหลัก" },
-  { code: "MYA003", role: "ปลายน้ำ", note: "~8.5 กม. ใต้สะพาน" },
-];
-
 const NORTH_PROVINCE_CODES = new Set([
   "50", // Chiang Mai
   "51", // Lamphun
@@ -185,22 +182,6 @@ function situationLabel(level: number | null): string {
   }
 }
 
-/** ระดับน้ำเทียบตลิ่ง (storage_percent) — the most direct flood signal.
- *  ≥100% = water above the lowest bank (ล้นตลิ่ง). */
-function bankPercentColor(sp: number): string {
-  if (sp >= 100) return "#d73027"; // overtopping
-  if (sp >= 80) return "#f97316"; // within 20% of the bank
-  if (sp >= 60) return "#fdae61";
-  if (sp >= 30) return "#5cc4ee";
-  return "#3f7f5f"; // low water
-}
-function bankPercentLabel(sp: number): string {
-  if (sp >= 100) return "ล้นตลิ่ง";
-  if (sp >= 80) return "ใกล้ล้นตลิ่ง";
-  if (sp >= 60) return "ค่อนข้างสูง";
-  if (sp >= 30) return "ปกติ";
-  return "น้ำน้อย";
-}
 
 type Basemap = "osm" | "topo" | "satellite";
 
@@ -474,7 +455,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
-  const [maeSaiOpen, setMaeSaiOpen] = useState(false);
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
@@ -1524,23 +1504,22 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             icon={<Building2 size={18} strokeWidth={2} />}
             onClick={() => setShowBuildings((v) => !v)}
           />
-          <button
-            onClick={() => setMaeSaiOpen((v) => !v)}
-            className={`toggle ${maeSaiOpen ? "on" : ""}`}
-            style={{ opacity: maeSaiChain.some((c) => c.station) ? 1 : 0.4 }}
-            disabled={!maeSaiChain.some((c) => c.station)}
+          <Link
+            href="/maesai"
+            className="toggle"
+            style={{ textDecoration: "none" }}
           >
             <span className="tg-glyph"><Waves size={18} strokeWidth={2} /></span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span className="tg-label">เฝ้าระวังแม่สาย</span>
               <span className="tg-hint">
                 {maeSaiBridge?.sp != null
-                  ? `สะพานมิตรภาพ ${maeSaiBridge.sp.toFixed(0)}% ของตลิ่ง`
+                  ? `สะพานมิตรภาพ ${maeSaiBridge.sp.toFixed(0)}% ของตลิ่ง · เปิดหน้าเต็ม`
                   : "แม่น้ำสาย · ต้นน้ำ→สะพาน"}
               </span>
             </span>
-            <span className="tg-sw" />
-          </button>
+            <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
+          </Link>
         </div>
       </div>
 
@@ -1659,150 +1638,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         </div>
       </div>
 
-      {/* Mae Sai watch panel — live upstream→downstream chain on the Sai river */}
-      {maeSaiOpen ? (
-        <div className="glass maesai-panel">
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 8,
-              paddingBottom: 10,
-              borderBottom: "1px solid var(--hairline)",
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: -0.2 }}>
-                เฝ้าระวังแม่สาย
-              </div>
-              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 2 }}>
-                แม่น้ำสาย · ต้นน้ำ → สะพานมิตรภาพ
-              </div>
-            </div>
-            <button
-              onClick={() => setMaeSaiOpen(false)}
-              aria-label="ปิด"
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
-                background: "rgba(255,255,255,0.10)",
-                color: "var(--ink)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                border: 0,
-                cursor: "pointer",
-                flex: "none",
-              }}
-            >
-              <X size={13} />
-            </button>
-          </div>
-
-          {maeSaiUpstreamRising > 0 ? (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: "rgba(253,174,97,0.12)",
-                border: "1px solid rgba(253,174,97,0.4)",
-                fontSize: 12,
-                color: "var(--ink)",
-                lineHeight: 1.5,
-              }}
-            >
-              ต้นน้ำกำลังเพิ่มขึ้น {maeSaiUpstreamRising} สถานี — น้ำมีแนวโน้มมาถึงสะพาน
-            </div>
-          ) : null}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 10 }}>
-            {maeSaiChain.map((c, i) => {
-              const isBridge = c.code === "MYA004";
-              const color = c.sp !== null ? bankPercentColor(c.sp) : "var(--ink-4)";
-              const rising = (c.deltaCm ?? 0) >= 1;
-              const falling = (c.deltaCm ?? 0) <= -1;
-              return (
-                <div
-                  key={c.code}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 9,
-                    padding: "8px 9px",
-                    borderRadius: 9,
-                    background: isBridge ? "rgba(64,224,189,0.09)" : "transparent",
-                    boxShadow: isBridge ? "inset 0 0 0 1px rgba(64,224,189,0.25)" : undefined,
-                  }}
-                >
-                  {/* flow connector */}
-                  <span
-                    style={{
-                      width: 3,
-                      alignSelf: "stretch",
-                      borderRadius: 2,
-                      background: color,
-                      flex: "none",
-                      opacity: c.sp !== null ? 1 : 0.3,
-                    }}
-                  />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 12.5,
-                        fontWeight: isBridge ? 700 : 600,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {c.name ?? c.role}
-                    </span>
-                    <span style={{ display: "block", fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
-                      {i === 0 ? "▲ " : i === maeSaiChain.length - 1 ? "▼ " : ""}
-                      {c.role} · {c.note}
-                    </span>
-                  </span>
-                  <span style={{ textAlign: "right", flex: "none" }}>
-                    <span className="num-mono" style={{ display: "block", fontSize: 14, fontWeight: 700, color }}>
-                      {c.sp !== null ? `${c.sp.toFixed(0)}%` : "—"}
-                    </span>
-                    <span
-                      className="num-mono"
-                      style={{
-                        display: "block",
-                        fontSize: 10.5,
-                        color: rising ? "var(--r-high)" : falling ? "var(--accent)" : "var(--ink-3)",
-                      }}
-                    >
-                      {c.deltaCm === null
-                        ? "—"
-                        : `${rising ? "▲" : falling ? "▼" : "•"} ${c.deltaCm >= 0 ? "+" : ""}${c.deltaCm.toFixed(0)} ซม.`}
-                    </span>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div style={{ fontSize: 10.5, color: "var(--ink-4)", marginTop: 10, lineHeight: 1.55 }}>
-            %ตลิ่ง = ระดับน้ำเทียบตลิ่งที่ต่ำที่สุด · ▲▼ = เทียบค่าที่ส่งมาก่อนหน้า
-            <br />
-            ข้อมูล สสน. (HII){" "}
-            {maeSaiBridge?.station?.waterlevel_datetime
-              ? `· ${maeSaiBridge.station.waterlevel_datetime}`
-              : ""}
-            <br />
-            <span style={{ color: "var(--ink-3)" }}>
-              ยังไม่แสดงเวลาที่น้ำจะถึงสะพาน — ต้องเก็บสถิติย้อนหลังมาสอบเทียบก่อน
-            </span>
-          </div>
-        </div>
-      ) : null}
-
       {/* Radar playback control — visible whenever the animated radar is on */}
       {showRainOverlay && rainLayer?.frames?.length ? (
         <div
@@ -1900,14 +1735,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             style={{ animation: refreshing ? "ff-spin 1s linear infinite" : undefined }}
           />
         </button>
-        <button
-          onClick={() => setMaeSaiOpen((v) => !v)}
-          className={maeSaiOpen ? "on" : ""}
+        <Link
+          href="/maesai"
           aria-label="เฝ้าระวังแม่สาย"
           title="เฝ้าระวังแม่สาย"
         >
           <Waves size={18} />
-        </button>
+        </Link>
         <button
           onClick={() => setMobileLayersOpen(true)}
           className={mobileLayersOpen ? "on" : ""}
@@ -2129,23 +1963,22 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               icon={<Building2 size={18} strokeWidth={2} />}
               onClick={() => setShowBuildings((v) => !v)}
             />
-          <button
-              onClick={() => setMaeSaiOpen((v) => !v)}
-              className={`toggle ${maeSaiOpen ? "on" : ""}`}
-              style={{ opacity: maeSaiChain.some((c) => c.station) ? 1 : 0.4 }}
-              disabled={!maeSaiChain.some((c) => c.station)}
-            >
-              <span className="tg-glyph"><Waves size={18} strokeWidth={2} /></span>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span className="tg-label">เฝ้าระวังแม่สาย</span>
-                <span className="tg-hint">
-                  {maeSaiBridge?.sp != null
-                    ? `สะพานมิตรภาพ ${maeSaiBridge.sp.toFixed(0)}% ของตลิ่ง`
-                    : "แม่น้ำสาย · ต้นน้ำ→สะพาน"}
-                </span>
+          <Link
+            href="/maesai"
+            className="toggle"
+            style={{ textDecoration: "none" }}
+          >
+            <span className="tg-glyph"><Waves size={18} strokeWidth={2} /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="tg-label">เฝ้าระวังแม่สาย</span>
+              <span className="tg-hint">
+                {maeSaiBridge?.sp != null
+                  ? `สะพานมิตรภาพ ${maeSaiBridge.sp.toFixed(0)}% ของตลิ่ง · เปิดหน้าเต็ม`
+                  : "แม่น้ำสาย · ต้นน้ำ→สะพาน"}
               </span>
-              <span className="tg-sw" />
-            </button>
+            </span>
+            <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
+          </Link>
 
 
             <div className="caps" style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 6 }}>

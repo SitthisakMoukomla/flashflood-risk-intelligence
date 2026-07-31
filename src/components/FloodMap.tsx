@@ -1174,41 +1174,54 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           ? null
           : Number(s.waterlevel_m);
 
-      const fillColor = sp !== null ? bankPercentColor(sp) : situationColor(sit);
+      const color = sp !== null ? bankPercentColor(sp) : situationColor(sit);
       const overtopping = sp !== null && sp >= 100;
-      const nearBank = sp !== null && sp >= 80 && sp < 100;
-      // Radius grows as the river approaches the bank.
-      const radius =
-        sp !== null ? 4 + Math.min(8, Math.max(0, sp) / 14) : 5 + (sit ?? 0);
+      // Water height inside the channel, clamped so >100% still reads as
+      // "full" while the spill cap communicates the overflow.
+      const fillPct = sp === null ? 0 : Math.max(4, Math.min(100, sp));
 
-      // Warning ring behind overtopping / near-bank stations so they pop
-      // at province zoom.
-      if (overtopping || nearBank) {
-        L.circleMarker([lat, lng], {
-          radius: radius + 6,
-          color: fillColor,
-          weight: 1.6,
-          fill: false,
-          opacity: overtopping ? 0.9 : 0.55,
-          interactive: false,
-        }).addTo(group);
-      }
+      // A channel cross-section rather than a bubble: the box IS the bank,
+      // the fill IS the water. Reading "how close to overtopping" no longer
+      // requires decoding a radius.
+      const W = 16;
+      const H = 20;
+      const padTop = 3; // space above the bank line for the spill cap
+      const chH = H - padTop - 1;
+      const waterH = (chH - 2) * (fillPct / 100);
+      const waterY = padTop + 1 + (chH - 2 - waterH);
+      const svg = `
+<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+  <rect x="2.5" y="${padTop + 0.5}" width="${W - 5}" height="${chH}" rx="2.5"
+        fill="rgba(7,19,24,0.72)" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+  ${
+    sp === null
+      ? `<line x1="4.5" y1="${padTop + chH / 2}" x2="${W - 4.5}" y2="${padTop + chH / 2}" stroke="#9aa6a6" stroke-width="1.4"/>`
+      : `<rect x="3.5" y="${waterY.toFixed(2)}" width="${W - 7}" height="${Math.max(1.5, waterH).toFixed(2)}" rx="1.5" fill="${color}"/>`
+  }
+  <line x1="1" y1="${padTop + 0.5}" x2="${W - 1}" y2="${padTop + 0.5}"
+        stroke="${overtopping ? "#d73027" : "rgba(255,255,255,0.85)"}" stroke-width="${overtopping ? 1.8 : 1.2}"
+        stroke-linecap="round"/>
+  ${overtopping ? `<path d="M3 ${padTop - 1.2} q3 -2.4 5 0 q3 -2.4 5 0" fill="none" stroke="#d73027" stroke-width="1.6" stroke-linecap="round"/>` : ""}
+</svg>`.trim();
 
-      const marker = L.circleMarker([lat, lng], {
-        radius,
-        color: "#0a1318",
-        weight: 0.9,
-        fillColor,
-        fillOpacity: 0.92,
+      const marker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: `ff-gauge${overtopping ? " is-over" : ""}`,
+          html: svg,
+          iconSize: [W, H],
+          iconAnchor: [W / 2, H - 1], // sit the channel base on the station
+        }),
         interactive: true,
+        keyboard: false,
       });
+
       const name = s.station.tele_station_name?.th ?? "(สถานี)";
       const agency = s.agency?.agency_shortname?.th ?? "";
       const province = s.geocode?.province_name?.th ?? "";
       const basin = s.basin?.basin_name?.th ?? "";
       const bankLine =
         sp !== null
-          ? `<br/>เทียบตลิ่ง <b style="color:${bankPercentColor(sp)}">${sp.toFixed(0)}% · ${bankPercentLabel(sp)}</b>`
+          ? `<br/>เทียบตลิ่ง <b style="color:${color}">${sp.toFixed(0)}% · ${bankPercentLabel(sp)}</b>`
           : `<br/>ระดับน้ำ <b>${situationLabel(sit)}</b>`;
       marker.bindTooltip(
         `<b>${name}</b>` +

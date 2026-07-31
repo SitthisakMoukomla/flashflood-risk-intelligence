@@ -79,6 +79,20 @@ type BuildingsOverlayMeta = {
 
 type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
 
+/** A place from the Nominatim proxy (/api/geocode). */
+type GeoPlace = {
+  id: number;
+  lat: number;
+  lon: number;
+  label: string;
+  detail: string;
+  full: string;
+  kind: string | null;
+  tambon: string | null;
+  amphoe: string | null;
+  province: string | null;
+};
+
 type ThaiWaterStation = {
   id: number;
   rain_24h: number | null;
@@ -449,7 +463,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
   const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const [geoStatus, setGeoStatus] = useState<GeoStatus>("idle");
+  const [userPlace, setUserPlace] = useState<GeoPlace | null>(null);
   const [searchQ, setSearchQ] = useState("");
+  const [geoResults, setGeoResults] = useState<GeoPlace[] | null>(null);
+  const [geoSearching, setGeoSearching] = useState(false);
 
   const [selectedGid, setSelectedGid] = useState<string | null>(null);
   // Drawer defaults to closed on phones (the bottom sheet eats too much
@@ -631,6 +648,24 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return null;
   }, [userLoc, rows]);
 
+  // Reverse-geocode the user's coordinate so we can name where they
+  // actually are — including when that's outside our 9-province coverage.
+  useEffect(() => {
+    if (!userLoc) {
+      setUserPlace(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    const [lng, lat] = userLoc;
+    fetch(`/api/geocode?lat=${lat}&lon=${lng}`, { signal: ctrl.signal })
+      .then((r) => r.json() as Promise<{ result?: GeoPlace | null }>)
+      .then((p) => setUserPlace(p.result ?? null))
+      .catch(() => {
+        /* keep whatever we had */
+      });
+    return () => ctrl.abort();
+  }, [userLoc]);
+
   useEffect(() => {
     if (geoStatus === "granted" && userLoc && rows.length > 0 && !userRow) {
       setGeoStatus("outside");
@@ -647,26 +682,55 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? userRow ?? sortedRows[0] ?? null;
   }, [rows, sortedRows, selectedGid, userRow]);
 
-  const heroRow = userRow ?? selectedRow;
+  // When the user's coordinate falls outside the 9 provinces we have no
+  // tambon for them. Showing `selectedRow` there would name a random
+  // high-risk tambon hundreds of km away — the hero must say "outside
+  // coverage" instead.
+  const outsideCoverage = geoStatus === "outside";
+  const heroRow = outsideCoverage ? null : (userRow ?? selectedRow);
   const heroTier: RiskTier = heroRow?.liveTier ?? "low";
   const isHighOrSevere = heroTier === "high" || heroTier === "severe";
 
   // Search results (only when query)
-  const searchResults = useMemo(() => {
-    const q = searchQ.trim().toLocaleLowerCase("th-TH");
-    if (!q) return [];
-    return rows
-      .filter((r) => {
-        const p = r.feature.properties;
-        // Match romanised and Thai spellings so "แม่สรวย" and "MaeSuai"
-        // both find the same tambon.
-        const hay = `${p.NAME_3} ${p.VARNAME_3 ?? ""} ${p.NAME_2} ${p.NL_NAME_2 ?? ""} ${p.NAME_1} ${thaiName(p.NAME_1)}`.toLocaleLowerCase(
-          "th-TH",
-        );
-        return hay.includes(q);
-      })
-      .slice(0, 8);
-  }, [rows, searchQ]);
+  // Search is powered by OpenStreetMap Nominatim (Thailand-only) via our
+  // proxy — GADM only knows 663 romanised tambon names, Nominatim knows
+  // provinces, districts, subdistricts and villages in Thai.
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (q.length < 2) {
+      setGeoResults(null);
+      setGeoSearching(false);
+      return;
+    }
+    setGeoSearching(true);
+    const ctrl = new AbortController();
+    // Debounced to stay inside Nominatim's 1 req/s usage policy.
+    const t = window.setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        const payload = (await r.json()) as { results?: GeoPlace[] };
+        setGeoResults(payload.results ?? []);
+      } catch {
+        if (!ctrl.signal.aborted) setGeoResults([]);
+      } finally {
+        if (!ctrl.signal.aborted) setGeoSearching(false);
+      }
+    }, 450);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(t);
+    };
+  }, [searchQ]);
+
+  /** Which tambon (if any) contains a coordinate. */
+  const tambonAt = useMemo(
+    () =>
+      (lng: number, lat: number): TambonRow | null => {
+        for (const row of rows) if (pointInGeom(lng, lat, row.feature.geometry)) return row;
+        return null;
+      },
+    [rows],
+  );
 
   // ─── Map setup ────────────────────────────────────────────────
   useEffect(() => {
@@ -1210,6 +1274,26 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     });
   };
 
+  /** Fly to a Nominatim result and select the tambon that contains it (if
+   *  the place falls inside our 9-province coverage). */
+  const flyToPlace = (place: GeoPlace) => {
+    const map = mapRef.current;
+    if (!map) return;
+    // Villages/points deserve a closer look than provinces.
+    const zoom =
+      place.kind === "village" || place.kind === "hamlet" || place.kind === "town"
+        ? 13
+        : place.kind === "county" || place.kind === "district"
+          ? 11
+          : 9;
+    map.flyTo([place.lat, place.lon], zoom, { duration: 0.8 });
+    const hit = tambonAt(place.lon, place.lat);
+    if (hit) {
+      setSelectedGid(hit.feature.properties.GID_3);
+      setDrawerOpen(true);
+    }
+  };
+
   const flyToUser = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -1247,12 +1331,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         row={heroRow}
         userRow={userRow}
         status={geoStatus}
+        userPlace={userPlace}
+        outsideCoverage={outsideCoverage}
         searchQ={searchQ}
         onSearchChange={setSearchQ}
-        searchResults={searchResults}
-        onSearchPick={(gid) => {
+        geoResults={geoResults}
+        geoSearching={geoSearching}
+        onPlacePick={(place) => {
           setSearchQ("");
-          flyToTambon(gid);
+          setGeoResults(null);
+          flyToPlace(place);
         }}
         loadError={loadError}
         copy={copy}
@@ -1660,6 +1748,77 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               </button>
             </div>
 
+            {/* Search inside the side menu — the hero search is hidden on
+                small screens, but Nominatim coverage makes it too useful
+                to bury. */}
+            <div style={{ marginTop: 14, position: "relative" }}>
+              <div className="search">
+                <Search size={14} style={{ color: "var(--ink-3)", flex: "none" }} />
+                <input
+                  placeholder="ค้นหา จังหวัด / อำเภอ / ตำบล / หมู่บ้าน"
+                  value={searchQ}
+                  onChange={(e) => setSearchQ(e.target.value)}
+                />
+                {geoSearching ? (
+                  <RefreshCw
+                    size={13}
+                    style={{ color: "var(--ink-3)", flex: "none", animation: "ff-spin 1s linear infinite" }}
+                  />
+                ) : null}
+              </div>
+              {searchQ.trim().length >= 2 && geoResults !== null ? (
+                <div style={{ marginTop: 6, maxHeight: "40vh", overflowY: "auto" }}>
+                  {geoResults.length === 0 ? (
+                    <div style={{ padding: "12px 10px", fontSize: 13, color: "var(--ink-3)", textAlign: "center" }}>
+                      ไม่พบพื้นที่ &ldquo;{searchQ.trim()}&rdquo;
+                    </div>
+                  ) : (
+                    geoResults.map((place) => (
+                      <button
+                        key={place.id}
+                        onClick={() => {
+                          setSearchQ("");
+                          setGeoResults(null);
+                          setMobileLayersOpen(false);
+                          flyToPlace(place);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 10,
+                          padding: "9px 8px",
+                          borderRadius: 8,
+                          color: "var(--ink)",
+                          width: "100%",
+                          textAlign: "left",
+                          background: "transparent",
+                          border: 0,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <MapPin size={14} style={{ color: "var(--accent)", flex: "none", marginTop: 2 }} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{place.label}</span>
+                          <span
+                            style={{
+                              display: "block",
+                              fontSize: 11,
+                              color: "var(--ink-3)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {place.detail || place.full}
+                          </span>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+
             <div className="caps" style={{ marginTop: 14 }}>เลือกมุมมอง</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 6 }}>
               {(["live", "static", "wetness"] as LayerMode[]).map((m) => {
@@ -1844,20 +2003,26 @@ function HeroRibbon({
   row,
   userRow,
   status,
+  userPlace,
+  outsideCoverage,
   searchQ,
   onSearchChange,
-  searchResults,
-  onSearchPick,
+  geoResults,
+  geoSearching,
+  onPlacePick,
   loadError,
   copy,
 }: {
   row: TambonRow | null;
   userRow: TambonRow | null;
   status: GeoStatus;
+  userPlace: GeoPlace | null;
+  outsideCoverage: boolean;
   searchQ: string;
   onSearchChange: (v: string) => void;
-  searchResults: TambonRow[];
-  onSearchPick: (gid: string) => void;
+  geoResults: GeoPlace[] | null;
+  geoSearching: boolean;
+  onPlacePick: (place: GeoPlace) => void;
   loadError: string | null;
   copy: typeof productCopy;
 }) {
@@ -1872,9 +2037,7 @@ function HeroRibbon({
       ? "ไม่ได้รับอนุญาตเข้าถึงตำแหน่ง"
       : status === "unsupported"
         ? "เบราว์เซอร์ไม่รองรับ GPS"
-        : status === "outside"
-          ? "อยู่นอก 9 จังหวัดภาคเหนือ"
-          : null;
+        : null;
 
   return (
     <div
@@ -1946,6 +2109,27 @@ function HeroRibbon({
                 · {action}
               </span>
             </>
+          ) : outsideCoverage ? (
+            <span
+              style={{
+                color: "var(--ink-2)",
+                fontSize: 13,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <MapPin size={14} style={{ color: "var(--r-high)", verticalAlign: "-2px" }} />{" "}
+              {userPlace ? (
+                <>
+                  คุณอยู่ที่{" "}
+                  <b style={{ color: "var(--ink)" }}>{userPlace.label}</b>
+                  {userPlace.detail ? ` · ${userPlace.detail}` : ""} —{" "}
+                </>
+              ) : null}
+              นอกพื้นที่ให้บริการ (เฉพาะ 9 จังหวัดภาคเหนือ)
+            </span>
           ) : (
             <span style={{ color: "var(--ink-2)", fontSize: 13 }}>
               {statusMsg ? `${statusMsg} — เลือกตำบลของคุณจากแผนที่หรือค้นหา` : "กำลังโหลด…"}
@@ -1953,17 +2137,23 @@ function HeroRibbon({
           )}
         </div>
 
-        {/* Search */}
-        <div className="hero-search" style={{ position: "relative", width: 280, flex: "none" }}>
+        {/* Search — OpenStreetMap Nominatim, Thailand only */}
+        <div className="hero-search" style={{ position: "relative", flex: "none" }}>
           <div className="search">
             <Search size={14} style={{ color: "var(--ink-3)", flex: "none" }} />
             <input
-              placeholder="ใส่ที่อยู่ของคุณ — ตำบล / อำเภอ"
+              placeholder="ค้นหา จังหวัด / อำเภอ / ตำบล / หมู่บ้าน"
               value={searchQ}
               onChange={(e) => onSearchChange(e.target.value)}
             />
+            {geoSearching ? (
+              <RefreshCw
+                size={13}
+                style={{ color: "var(--ink-3)", flex: "none", animation: "ff-spin 1s linear infinite" }}
+              />
+            ) : null}
           </div>
-          {searchResults.length > 0 ? (
+          {searchQ.trim().length >= 2 && geoResults !== null ? (
             <div
               className="glass"
               style={{
@@ -1972,43 +2162,65 @@ function HeroRibbon({
                 right: 0,
                 left: 0,
                 padding: 6,
-                maxHeight: 320,
+                maxHeight: "min(60vh, 380px)",
                 overflowY: "auto",
                 zIndex: 30,
               }}
             >
-              {searchResults.map((r) => (
-                <button
-                  key={r.feature.properties.GID_3}
-                  onClick={() => onSearchPick(r.feature.properties.GID_3)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    color: "var(--ink)",
-                    width: "100%",
-                    textAlign: "left",
-                    background: "transparent",
-                    border: 0,
-                    cursor: "pointer",
-                  }}
-                >
-                  <MapPin size={14} style={{ color: riskMeta[r.liveTier].color }} />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>
-                      ตำบล{r.feature.properties.NAME_3}
+              {geoResults.length === 0 ? (
+                <div style={{ padding: "14px 12px", fontSize: 13, color: "var(--ink-3)", textAlign: "center" }}>
+                  ไม่พบพื้นที่ &ldquo;{searchQ.trim()}&rdquo;
+                  <div style={{ fontSize: 11, marginTop: 4 }}>ลองพิมพ์ชื่ออำเภอหรือจังหวัดแทน</div>
+                </div>
+              ) : (
+                geoResults.map((place) => (
+                  <button
+                    key={place.id}
+                    onClick={() => onPlacePick(place)}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "9px 10px",
+                      borderRadius: 8,
+                      color: "var(--ink)",
+                      width: "100%",
+                      textAlign: "left",
+                      background: "transparent",
+                      border: 0,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <MapPin size={14} style={{ color: "var(--accent)", flex: "none", marginTop: 2 }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 600 }}>{place.label}</span>
+                      <span
+                        style={{
+                          display: "block",
+                          fontSize: 11,
+                          color: "var(--ink-3)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={place.full}
+                      >
+                        {place.detail || place.full}
+                      </span>
                     </span>
-                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
-                      อ.{amphoeName(r.feature.properties)} · {thaiName(r.feature.properties.NAME_1)}
-                    </span>
-                  </span>
-                  <span className={`tier ${TIER_PILL[r.liveTier]}`} style={{ fontSize: 11 }}>
-                    {TIER_TH[r.liveTier]}
-                  </span>
-                </button>
-              ))}
+                  </button>
+                ))
+              )}
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--ink-4)",
+                  textAlign: "right",
+                  padding: "6px 8px 2px",
+                }}
+              >
+                ค้นหาโดย OpenStreetMap Nominatim
+              </div>
             </div>
           ) : null}
         </div>

@@ -1160,6 +1160,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (!showWaterStations || !waterStations || waterStations.length === 0) return;
 
     const group = L.layerGroup();
+    // Zoomed out: soft dots (tinting the rivers). Zoomed in: droplet gauges
+    // whose liquid level IS the %-of-bank.
+    const detailed = zoom >= 9;
     for (const s of waterStations) {
       const lat = s.station.tele_station_lat;
       const lng = s.station.tele_station_long;
@@ -1176,44 +1179,60 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
       const color = sp !== null ? bankPercentColor(sp) : situationColor(sit);
       const overtopping = sp !== null && sp >= 100;
-      // Water height inside the channel, clamped so >100% still reads as
-      // "full" while the spill cap communicates the overflow.
-      const fillPct = sp === null ? 0 : Math.max(4, Math.min(100, sp));
 
-      // A channel cross-section rather than a bubble: the box IS the bank,
-      // the fill IS the water. Reading "how close to overtopping" no longer
-      // requires decoding a radius.
-      const W = 16;
-      const H = 20;
-      const padTop = 3; // space above the bank line for the spill cap
-      const chH = H - padTop - 1;
-      const waterH = (chH - 2) * (fillPct / 100);
-      const waterY = padTop + 1 + (chH - 2 - waterH);
-      const svg = `
-<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-  <rect x="2.5" y="${padTop + 0.5}" width="${W - 5}" height="${chH}" rx="2.5"
-        fill="rgba(7,19,24,0.72)" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
-  ${
-    sp === null
-      ? `<line x1="4.5" y1="${padTop + chH / 2}" x2="${W - 4.5}" y2="${padTop + chH / 2}" stroke="#9aa6a6" stroke-width="1.4"/>`
-      : `<rect x="3.5" y="${waterY.toFixed(2)}" width="${W - 7}" height="${Math.max(1.5, waterH).toFixed(2)}" rx="1.5" fill="${color}"/>`
-  }
-  <line x1="1" y1="${padTop + 0.5}" x2="${W - 1}" y2="${padTop + 0.5}"
-        stroke="${overtopping ? "#d73027" : "rgba(255,255,255,0.85)"}" stroke-width="${overtopping ? 1.8 : 1.2}"
-        stroke-linecap="round"/>
-  ${overtopping ? `<path d="M3 ${padTop - 1.2} q3 -2.4 5 0 q3 -2.4 5 0" fill="none" stroke="#d73027" stroke-width="1.6" stroke-linecap="round"/>` : ""}
+      let marker: Leaflet.Layer;
+      if (!detailed) {
+        marker = L.circleMarker([lat, lng], {
+          radius: overtopping ? 5.5 : 4,
+          color: "rgba(255,255,255,0.85)",
+          weight: 1.1,
+          fillColor: color,
+          fillOpacity: 0.95,
+          interactive: true,
+          className: overtopping ? "ff-dot-over" : undefined,
+        });
+      } else {
+        const fillPct = sp === null ? 0 : Math.max(6, Math.min(100, sp));
+        // Droplet 18×24, bulb centred at (9, 15.2) r≈7.2, tip at (9, 1.6).
+        const topY = 4.2; // interior water range top…
+        const botY = 21.6; // …bottom
+        const level = botY - ((botY - topY) * fillPct) / 100;
+        const uid = `wd${s.id}`;
+        const svg = `
+<svg width="18" height="26" viewBox="0 0 18 26" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="${uid}c"><path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"/></clipPath>
+    <linearGradient id="${uid}g" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="${color}"/>
+      <stop offset="1" stop-color="${color}" stop-opacity="0.72"/>
+    </linearGradient>
+  </defs>
+  <path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"
+        fill="rgba(7,19,24,0.55)"/>
+  <g clip-path="url(#${uid}c)">
+    ${
+      sp === null
+        ? `<line x1="4" y1="15.2" x2="14" y2="15.2" stroke="#9aa6a6" stroke-width="1.6"/>`
+        : `<rect x="0" y="${level.toFixed(2)}" width="18" height="${(26 - level).toFixed(2)}" fill="url(#${uid}g)"/>
+           <path d="M0 ${level.toFixed(2)} q2.2 -1.6 4.5 0 t4.5 0 t4.5 0 t4.5 0 V26 H0 Z" fill="${color}" opacity="0.55"/>`
+    }
+  </g>
+  <path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"
+        fill="none" stroke="${overtopping ? "#ff6b5e" : "rgba(255,255,255,0.9)"}" stroke-width="1.3"/>
+  <ellipse cx="5.9" cy="12.2" rx="1.7" ry="2.6" fill="rgba(255,255,255,0.28)" transform="rotate(-18 5.9 12.2)"/>
 </svg>`.trim();
 
-      const marker = L.marker([lat, lng], {
-        icon: L.divIcon({
-          className: `ff-gauge${overtopping ? " is-over" : ""}`,
-          html: svg,
-          iconSize: [W, H],
-          iconAnchor: [W / 2, H - 1], // sit the channel base on the station
-        }),
-        interactive: true,
-        keyboard: false,
-      });
+        marker = L.marker([lat, lng], {
+          icon: L.divIcon({
+            className: `ff-gauge${overtopping ? " is-over" : ""}`,
+            html: svg,
+            iconSize: [18, 26],
+            iconAnchor: [9, 24],
+          }),
+          interactive: true,
+          keyboard: false,
+        });
+      }
 
       const name = s.station.tele_station_name?.th ?? "(สถานี)";
       const agency = s.agency?.agency_shortname?.th ?? "";
@@ -1237,7 +1256,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     group.addTo(map);
     waterStationsLayerRef.current = group;
-  }, [isMapReady, showWaterStations, waterStations]);
+  }, [isMapReady, showWaterStations, waterStations, zoom]);
 
   // 7) Per-tambon building points (vector). Replaces the density blob with
   // actual centroids when the user has selected a tambon AND zoomed past 12.

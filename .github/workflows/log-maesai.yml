@@ -1,0 +1,52 @@
+name: Log Mae Sai water levels
+
+# Builds the history HII's public API doesn't expose (its /waterlevel_graph
+# endpoint 500s and /waterlevel_load ignores station_id), so we can later
+# calibrate an empirical travel time from the upstream Sai-river gauges to
+# the Mae Sai Friendship Bridge.
+#
+# Cadence note: this repo is private, so GitHub Actions bills against the
+# 2,000 free minutes/month. Each run is billed as 1 minute, so every 30
+# minutes = 48/day ≈ 1,440 min/month — inside the free tier with headroom.
+# Going to 10-15 minute sampling (matching HII's telemetry push rate) needs
+# either a public repo or a paid plan.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: maesai-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (sparse — the repo carries ~300 MB of building data)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline/scripts/12_maesai_log.py
+            public/data/maesai_log.jsonl
+          sparse-checkout-cone-mode: false
+
+      # Script is stdlib-only on purpose: no uv sync, no pip install.
+      - name: Poll HII and append
+        run: python3 pipeline/scripts/12_maesai_log.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/maesai_log.jsonl
+          if git diff --cached --quiet; then
+            echo "no new telemetry — nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore(data): Mae Sai water-level poll"
+          # Another run may have landed while this one was working.
+          git pull --rebase --autostash origin ${GITHUB_REF_NAME}
+          git push

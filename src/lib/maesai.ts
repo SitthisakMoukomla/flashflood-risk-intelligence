@@ -22,19 +22,22 @@ export const MAESAI_CODES = new Set(MAESAI_CHAIN.map((c) => c.code));
 
 /** ระดับน้ำเทียบตลิ่ง (storage_percent) — ≥100% = above the lowest bank. */
 export function bankPercentColor(sp: number): string {
-  if (sp >= 100) return "#d73027";
-  if (sp >= 80) return "#f97316";
-  if (sp >= 60) return "#fdae61";
-  if (sp >= 30) return "#5cc4ee";
-  return "#3f7f5f";
+  // NOAA AHPS/NWPS flood-category ladder adapted to %-of-bank:
+  // green (below) → yellow (near) → orange (minor) → red (flooding) →
+  // purple (major). Same convention as water.noaa.gov and river.go.jp.
+  if (sp >= 120) return "#b455e6"; // major overtopping
+  if (sp >= 100) return "#e63b2e"; // over the bank
+  if (sp >= 80) return "#ff8c1a"; // within 20% of the bank
+  if (sp >= 60) return "#ffd23f"; // approaching
+  return "#3fbf4e"; // below flood stage
 }
 
 export function bankPercentLabel(sp: number): string {
+  if (sp >= 120) return "ล้นตลิ่งรุนแรง";
   if (sp >= 100) return "ล้นตลิ่ง";
   if (sp >= 80) return "ใกล้ล้นตลิ่ง";
   if (sp >= 60) return "ค่อนข้างสูง";
-  if (sp >= 30) return "ปกติ";
-  return "น้ำน้อย";
+  return "ปกติ";
 }
 
 /** One row of public/data/maesai_log.jsonl, written by 12_maesai_log.py. */

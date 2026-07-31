@@ -1160,9 +1160,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (!showWaterStations || !waterStations || waterStations.length === 0) return;
 
     const group = L.layerGroup();
-    // Zoomed out: soft dots (tinting the rivers). Zoomed in: droplet gauges
-    // whose liquid level IS the %-of-bank.
-    const detailed = zoom >= 9;
+    // World-standard gauge cartography (NOAA NWPS, river.go.jp): small flat
+    // dots in a categorical warning palette. No glyphs, no gradients — the
+    // colour ladder carries all the meaning, at every zoom.
     for (const s of waterStations) {
       const lat = s.station.tele_station_lat;
       const lng = s.station.tele_station_long;
@@ -1177,62 +1177,29 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           ? null
           : Number(s.waterlevel_m);
 
-      const color = sp !== null ? bankPercentColor(sp) : situationColor(sit);
-      const overtopping = sp !== null && sp >= 100;
+      const color = sp !== null ? bankPercentColor(sp) : "#8a9a9a";
+      const flooding = sp !== null && sp >= 100;
 
-      let marker: Leaflet.Layer;
-      if (!detailed) {
-        marker = L.circleMarker([lat, lng], {
-          radius: overtopping ? 5.5 : 4,
-          color: "rgba(255,255,255,0.85)",
-          weight: 1.1,
-          fillColor: color,
-          fillOpacity: 0.95,
-          interactive: true,
-          className: overtopping ? "ff-dot-over" : undefined,
-        });
-      } else {
-        const fillPct = sp === null ? 0 : Math.max(6, Math.min(100, sp));
-        // Droplet 18×24, bulb centred at (9, 15.2) r≈7.2, tip at (9, 1.6).
-        const topY = 4.2; // interior water range top…
-        const botY = 21.6; // …bottom
-        const level = botY - ((botY - topY) * fillPct) / 100;
-        const uid = `wd${s.id}`;
-        const svg = `
-<svg width="18" height="26" viewBox="0 0 18 26" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <clipPath id="${uid}c"><path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"/></clipPath>
-    <linearGradient id="${uid}g" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0" stop-color="${color}"/>
-      <stop offset="1" stop-color="${color}" stop-opacity="0.72"/>
-    </linearGradient>
-  </defs>
-  <path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"
-        fill="rgba(7,19,24,0.55)"/>
-  <g clip-path="url(#${uid}c)">
-    ${
-      sp === null
-        ? `<line x1="4" y1="15.2" x2="14" y2="15.2" stroke="#9aa6a6" stroke-width="1.6"/>`
-        : `<rect x="0" y="${level.toFixed(2)}" width="18" height="${(26 - level).toFixed(2)}" fill="url(#${uid}g)"/>
-           <path d="M0 ${level.toFixed(2)} q2.2 -1.6 4.5 0 t4.5 0 t4.5 0 t4.5 0 V26 H0 Z" fill="${color}" opacity="0.55"/>`
-    }
-  </g>
-  <path d="M9 1.6 C9 1.6 2 10.4 2 15.2 a7 7 0 0 0 14 0 C16 10.4 9 1.6 9 1.6 Z"
-        fill="none" stroke="${overtopping ? "#ff6b5e" : "rgba(255,255,255,0.9)"}" stroke-width="1.3"/>
-  <ellipse cx="5.9" cy="12.2" rx="1.7" ry="2.6" fill="rgba(255,255,255,0.28)" transform="rotate(-18 5.9 12.2)"/>
-</svg>`.trim();
-
-        marker = L.marker([lat, lng], {
-          icon: L.divIcon({
-            className: `ff-gauge${overtopping ? " is-over" : ""}`,
-            html: svg,
-            iconSize: [18, 26],
-            iconAnchor: [9, 24],
-          }),
-          interactive: true,
-          keyboard: false,
-        });
+      // Flooding points get a white halo ring so they pop at any zoom —
+      // the NWPS trick for "gauges currently in flood".
+      if (flooding) {
+        L.circleMarker([lat, lng], {
+          radius: 9,
+          color: "rgba(255,255,255,0.9)",
+          weight: 1.6,
+          fill: false,
+          interactive: false,
+        }).addTo(group);
       }
+
+      const marker = L.circleMarker([lat, lng], {
+        radius: flooding ? 6 : 4.5,
+        color: "rgba(10,19,24,0.85)",
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 1,
+        interactive: true,
+      });
 
       const name = s.station.tele_station_name?.th ?? "(สถานี)";
       const agency = s.agency?.agency_shortname?.th ?? "";
@@ -1256,7 +1223,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     group.addTo(map);
     waterStationsLayerRef.current = group;
-  }, [isMapReady, showWaterStations, waterStations, zoom]);
+  }, [isMapReady, showWaterStations, waterStations]);
 
   // 7) Per-tambon building points (vector). Replaces the density blob with
   // actual centroids when the user has selected a tambon AND zoomed past 12.
@@ -1647,6 +1614,23 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         className="desktop-only"
       >
         <div className="glass legend">
+          {showWaterStations ? (
+            <>
+              {([
+                ["#3fbf4e", "ปกติ"],
+                ["#ffd23f", "ค่อนข้างสูง"],
+                ["#ff8c1a", "ใกล้ล้นตลิ่ง"],
+                ["#e63b2e", "ล้นตลิ่ง"],
+                ["#b455e6", "รุนแรง"],
+              ] as const).map(([c, l]) => (
+                <span key={l} className="legend-chip">
+                  <span className="sw" style={{ background: c, borderRadius: 999 }} />
+                  {l}
+                </span>
+              ))}
+              <span style={{ width: 1, alignSelf: "stretch", background: "var(--hairline-2)" }} />
+            </>
+          ) : null}
           <span className="legend-chip">
             <span
               className="sw"

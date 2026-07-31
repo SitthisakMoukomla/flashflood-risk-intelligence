@@ -466,7 +466,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [showBuildings, setShowBuildings] = useState(false);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
-  const [showWaterStations, setShowWaterStations] = useState(false);
+  // Measured river levels are the most trustworthy layer we have and the
+  // thing people open the site for — on by default.
+  const [showWaterStations, setShowWaterStations] = useState(true);
   const [waterStations, setWaterStations] = useState<ThaiWaterLevelStation[] | null>(null);
   const [basemap, setBasemap] = useState<Basemap>("satellite");
   const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
@@ -1897,6 +1899,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             size={18}
             style={{ animation: refreshing ? "ff-spin 1s linear infinite" : undefined }}
           />
+        </button>
+        <button
+          onClick={() => setMaeSaiOpen((v) => !v)}
+          className={maeSaiOpen ? "on" : ""}
+          aria-label="เฝ้าระวังแม่สาย"
+          title="เฝ้าระวังแม่สาย"
+        >
+          <Waves size={18} />
         </button>
         <button
           onClick={() => setMobileLayersOpen(true)}

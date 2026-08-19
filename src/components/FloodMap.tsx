@@ -287,10 +287,14 @@ function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.M
 type HexBand = { min: number; color: string; fill: number };
 
 // ─── H3 hexagon risk surface ───────────────────────────────────────
-// The coarse model grid is resampled onto an H3 res-6 honeycomb
-// (~7 km across — honest to the data's real resolution) and drawn as
-// crisp hexagon polygons instead of an upscaled raster blob.
-const HEX_RES = 6;
+// The coarse model grid is resampled onto an H3 honeycomb and drawn
+// as crisp hexagon polygons instead of an upscaled raster blob.
+// Resolution follows zoom: res 5 (~20 km) at overview keeps the
+// polygon count low; res 6 (~7 km) when zoomed in matches the data's
+// real resolution. Ready to extend for the nationwide grid.
+function hexResForZoom(zoom: number): number {
+  return zoom <= 7 ? 5 : 6;
+}
 
 type HexCell = { boundary: [number, number][]; gx: number; gy: number };
 
@@ -324,7 +328,7 @@ function bilinearSample(
 
 /** Hexes covering the model grid bbox, clipped to the 9-province AOI
  *  via the static-susceptibility mask (0 outside the provinces). */
-function buildHexCells(grid: WetnessGrid): HexCell[] {
+function buildHexCells(grid: WetnessGrid, res: number): HexCell[] {
   const [w, s, e, n] = grid.grid_bbox;
   const mask = grid.static_norm;
   const cells = polygonToCells(
@@ -334,7 +338,7 @@ function buildHexCells(grid: WetnessGrid): HexCell[] {
       [s, e],
       [s, w],
     ],
-    HEX_RES,
+    res,
   );
   const out: HexCell[] = [];
   for (const c of cells) {
@@ -945,8 +949,27 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(map);
   }, [isMapReady, rows, selectedGid]);
 
-  // Hexes are shared by all three modes — compute once per grid payload.
-  const hexCells = useMemo(() => (grid ? buildHexCells(grid) : null), [grid]);
+  // Hexes are shared by all three modes — computed per grid payload and
+  // per H3 resolution, cached so crossing the zoom threshold is instant.
+  const hexCacheRef = useRef<{ grid: WetnessGrid | null; byRes: Map<number, HexCell[]> }>({
+    grid: null,
+    byRes: new Map(),
+  });
+  const hexRes = hexResForZoom(zoom);
+  const hexCells = useMemo(() => {
+    if (!grid) return null;
+    const cache = hexCacheRef.current;
+    if (cache.grid !== grid) {
+      cache.grid = grid;
+      cache.byRes.clear();
+    }
+    let cells = cache.byRes.get(hexRes);
+    if (!cells) {
+      cells = buildHexCells(grid, hexRes);
+      cache.byRes.set(hexRes, cells);
+    }
+    return cells;
+  }, [grid, hexRes]);
 
   // One canvas pane under the tambon outlines & station dots.
   const ensureHexRenderer = (L: typeof Leaflet, map: Leaflet.Map): Leaflet.Renderer => {

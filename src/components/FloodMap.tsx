@@ -126,17 +126,6 @@ type ThaiWaterLevelStation = {
   };
 };
 
-const NORTH_PROVINCE_CODES = new Set([
-  "50", // Chiang Mai
-  "51", // Lamphun
-  "52", // Lampang
-  "53", // Uttaradit
-  "54", // Phrae
-  "55", // Nan
-  "56", // Phayao
-  "57", // Chiang Rai
-  "58", // Mae Hong Son
-]);
 const THAIWATER_RAIN_24H_URL =
   "https://api-v3.thaiwater.net/api/v1/thaiwater30/public/rain_24h";
 const THAIWATER_WATERLEVEL_URL =
@@ -557,15 +546,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const r = await fetch(THAIWATER_RAIN_24H_URL, { cache: "no-store" });
         if (!r.ok || !active) return;
         const payload = (await r.json()) as { data: ThaiWaterStation[] };
-        // Filter to the 9 northern provinces; drop rows missing coordinates.
-        const north = payload.data.filter(
+        // Nationwide — drop only rows missing coordinates.
+        const stations = payload.data.filter(
           (s) =>
-            NORTH_PROVINCE_CODES.has(s.geocode?.province_code) &&
             s.station &&
             Number.isFinite(s.station.tele_station_lat) &&
             Number.isFinite(s.station.tele_station_long),
         );
-        if (active) setRainStations(north);
+        if (active) setRainStations(stations);
       } catch {
         /* leave previous payload */
       }
@@ -575,24 +563,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const r = await fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" });
         if (!r.ok || !active) return;
         const payload = (await r.json()) as { data: ThaiWaterLevelStation[] };
-        const chainCodes = new Set(MAESAI_CHAIN.map((c) => c.code));
-        const north = payload.data.filter((s) => {
-          if (!s.station) return false;
-          if (
-            !Number.isFinite(s.station.tele_station_lat) ||
-            !Number.isFinite(s.station.tele_station_long)
-          ) {
-            return false;
-          }
-          // The upstream Sai-river gauges sit on the Myanmar side
-          // (province_code 10499) and would otherwise be filtered out —
-          // they're the whole point of the Mae Sai watch panel.
-          if (s.station.tele_station_oldcode && chainCodes.has(s.station.tele_station_oldcode)) {
-            return true;
-          }
-          return NORTH_PROVINCE_CODES.has(s.geocode?.province_code);
-        });
-        if (active) setWaterStations(north);
+        // Nationwide (the Myanmar-side Sai gauges come along for free now).
+        const stations = payload.data.filter(
+          (s) =>
+            s.station &&
+            Number.isFinite(s.station.tele_station_lat) &&
+            Number.isFinite(s.station.tele_station_long),
+        );
+        if (active) setWaterStations(stations);
       } catch {
         /* leave previous */
       }

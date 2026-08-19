@@ -791,3 +791,34 @@ a { color: inherit; }
 .ms-note p { margin: 0 0 10px; }
 .ms-note b { color: var(--ink); }
 .ms-disclaim { color: var(--ink-4) !important; font-size: 11px; }
+
+/* Flood beacon — gauge over the bank: flat dot + pulsing ring */
+.ff-flood-beacon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.ff-flood-beacon .core {
+  position: absolute;
+  inset: 1px;
+  border-radius: 999px;
+  background: var(--c);
+  border: 1px solid rgba(10, 19, 24, 0.85);
+  box-shadow: 0 0 8px var(--c);
+}
+.ff-flood-beacon .ring {
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+  border: 2px solid var(--c);
+  animation: floodPulse 1.5s ease-out infinite;
+}
+@keyframes floodPulse {
+  0% { transform: scale(0.55); opacity: 0.95; }
+  70% { transform: scale(1.7); opacity: 0; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ff-flood-beacon .ring { animation: none; opacity: 0.7; }
+}

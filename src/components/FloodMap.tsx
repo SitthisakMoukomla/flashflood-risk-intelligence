@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
 import type { GeoJSON as LeafletGeoJSON } from "leaflet";
+import { cellToBoundary, cellToLatLng, polygonToCells } from "h3-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   methodSteps,
@@ -65,15 +66,6 @@ type RainLayerPayload = {
   frameTime: string;
   tileUrl: string;
   source: string;
-};
-
-type StaticOverlayMeta = {
-  generated_at: string;
-  bbox: [number, number, number, number];
-  width: number;
-  height: number;
-  norm_low: number;
-  norm_high: number;
 };
 
 type BuildingsOverlayMeta = {
@@ -303,88 +295,128 @@ function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.M
   return false;
 }
 
-type Band = { min: number; rgba: [number, number, number, number] };
+type HexBand = { min: number; color: string; fill: number };
 
-/** Weather-warning-style banded raster: bilinear-upsample the coarse grid,
- *  then quantise into solid colour classes. Sharp, bold zones instead of
- *  the foggy blob the browser makes of a 29×24 canvas. */
-function renderBandedGridToDataURL(
-  cols: number,
-  rows: number,
-  values: number[] | Float32Array,
-  cap: number,
-  bands: Band[], // ascending by min; value below bands[0].min → transparent
-  mask?: number[] | Float32Array | null,
-  scale = 10,
-): string | null {
-  if (typeof document === "undefined") return null;
-  const W = cols * scale;
-  const H = rows * scale;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  const img = ctx.createImageData(W, H);
-  const buf = img.data;
+// ─── H3 hexagon risk surface ───────────────────────────────────────
+// The coarse model grid is resampled onto an H3 res-6 honeycomb
+// (~7 km across — honest to the data's real resolution) and drawn as
+// crisp hexagon polygons instead of an upscaled raster blob.
+const HEX_RES = 6;
 
-  const sample = (arr: number[] | Float32Array, gx: number, gy: number): number => {
-    const x0 = Math.max(0, Math.min(cols - 1, Math.floor(gx)));
-    const y0 = Math.max(0, Math.min(rows - 1, Math.floor(gy)));
-    const x1 = Math.min(cols - 1, x0 + 1);
-    const y1 = Math.min(rows - 1, y0 + 1);
-    const fx = Math.max(0, Math.min(1, gx - x0));
-    const fy = Math.max(0, Math.min(1, gy - y0));
-    const v00 = Number(arr[y0 * cols + x0]) || 0;
-    const v10 = Number(arr[y0 * cols + x1]) || 0;
-    const v01 = Number(arr[y1 * cols + x0]) || 0;
-    const v11 = Number(arr[y1 * cols + x1]) || 0;
-    return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
-  };
+type HexCell = { boundary: [number, number][]; gx: number; gy: number };
 
-  for (let y = 0; y < H; y++) {
-    const gy = (y + 0.5) / scale - 0.5;
-    for (let x = 0; x < W; x++) {
-      const gx = (x + 0.5) / scale - 0.5;
-      const o = (y * W + x) * 4;
-      if (mask && sample(mask, gx, gy) < 0.5) {
-        buf[o + 3] = 0;
-        continue;
-      }
-      const t = Math.min(1, Math.max(0, sample(values, gx, gy) / cap));
-      let band: Band | null = null;
-      for (const b of bands) {
-        if (t >= b.min) band = b;
-        else break;
-      }
-      if (!band) {
-        buf[o + 3] = 0;
-        continue;
-      }
-      buf[o] = band.rgba[0];
-      buf[o + 1] = band.rgba[1];
-      buf[o + 2] = band.rgba[2];
-      buf[o + 3] = band.rgba[3];
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  return canvas.toDataURL();
+function shade(hex: string, f: number): string {
+  const v = parseInt(hex.slice(1), 16);
+  const r = Math.round(((v >> 16) & 255) * f);
+  const g = Math.round(((v >> 8) & 255) * f);
+  const b = Math.round((v & 255) * f);
+  return `rgb(${r},${g},${b})`;
 }
 
-// Live risk bands — tier colours, solid and bold.
-const LIVE_BANDS: Band[] = [
-  { min: 0.08, rgba: [26, 152, 80, 130] },
-  { min: 0.2, rgba: [254, 224, 139, 190] },
-  { min: 0.4, rgba: [253, 174, 97, 210] },
-  { min: 0.55, rgba: [215, 48, 39, 225] },
+function bilinearSample(
+  arr: ArrayLike<number>,
+  cols: number,
+  rows: number,
+  gx: number,
+  gy: number,
+): number {
+  const x0 = Math.max(0, Math.min(cols - 1, Math.floor(gx)));
+  const y0 = Math.max(0, Math.min(rows - 1, Math.floor(gy)));
+  const x1 = Math.min(cols - 1, x0 + 1);
+  const y1 = Math.min(rows - 1, y0 + 1);
+  const fx = Math.max(0, Math.min(1, gx - x0));
+  const fy = Math.max(0, Math.min(1, gy - y0));
+  const v00 = Number(arr[y0 * cols + x0]) || 0;
+  const v10 = Number(arr[y0 * cols + x1]) || 0;
+  const v01 = Number(arr[y1 * cols + x0]) || 0;
+  const v11 = Number(arr[y1 * cols + x1]) || 0;
+  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+}
+
+/** Hexes covering the model grid bbox, clipped to the 9-province AOI
+ *  via the static-susceptibility mask (0 outside the provinces). */
+function buildHexCells(grid: WetnessGrid): HexCell[] {
+  const [w, s, e, n] = grid.grid_bbox;
+  const mask = grid.static_norm;
+  const cells = polygonToCells(
+    [
+      [n, w],
+      [n, e],
+      [s, e],
+      [s, w],
+    ],
+    HEX_RES,
+  );
+  const out: HexCell[] = [];
+  for (const c of cells) {
+    const [lat, lng] = cellToLatLng(c);
+    // Node-registered grid: cell centres span the bbox inclusive
+    // (same mapping as sampleGridAt in lib/tambon.ts).
+    const gx = ((lng - w) / (e - w)) * (grid.cols - 1);
+    const gy = ((n - lat) / (n - s)) * (grid.rows - 1);
+    if (mask && bilinearSample(mask, grid.cols, grid.rows, gx, gy) <= 0.02) continue;
+    out.push({ boundary: cellToBoundary(c) as [number, number][], gx, gy });
+  }
+  return out;
+}
+
+function renderHexGroup(
+  L: typeof Leaflet,
+  renderer: Leaflet.Renderer,
+  hexes: HexCell[],
+  grid: WetnessGrid,
+  values: ArrayLike<number>,
+  cap: number,
+  bands: HexBand[],
+): Leaflet.LayerGroup {
+  const group = L.layerGroup();
+  for (const h of hexes) {
+    const t = Math.min(
+      1,
+      Math.max(0, bilinearSample(values, grid.cols, grid.rows, h.gx, h.gy) / cap),
+    );
+    let band: HexBand | null = null;
+    for (const b of bands) {
+      if (t >= b.min) band = b;
+      else break;
+    }
+    if (!band) continue;
+    L.polygon(h.boundary, {
+      renderer,
+      interactive: false,
+      stroke: true,
+      color: shade(band.color, 0.65),
+      weight: 0.6,
+      opacity: 0.5,
+      fillColor: band.color,
+      fillOpacity: band.fill,
+    }).addTo(group);
+  }
+  return group;
+}
+
+// Live risk bands — tier colours, opacity rising with severity.
+const LIVE_BANDS: HexBand[] = [
+  { min: 0.08, color: "#1a9850", fill: 0.4 },
+  { min: 0.2, color: "#f6c445", fill: 0.52 },
+  { min: 0.4, color: "#fb8437", fill: 0.64 },
+  { min: 0.55, color: "#d7301f", fill: 0.78 },
+];
+
+// Static susceptibility bands — same thresholds the old baked PNG used.
+const STATIC_BANDS: HexBand[] = [
+  { min: 0.02, color: "#1a9850", fill: 0.4 },
+  { min: 0.25, color: "#f6c445", fill: 0.52 },
+  { min: 0.5, color: "#fb8437", fill: 0.64 },
+  { min: 0.7, color: "#d7301f", fill: 0.78 },
 ];
 
 // Wetness bands — mm of 7-day rain against the 80 mm cap.
-const WETNESS_BANDS: Band[] = [
-  { min: 0.06, rgba: [127, 208, 240, 140] }, // ~5 mm
-  { min: 0.19, rgba: [59, 130, 246, 180] }, // ~15 mm
-  { min: 0.38, rgba: [29, 78, 216, 205] }, // ~30 mm
-  { min: 0.63, rgba: [30, 41, 120, 225] }, // ~50 mm+
+const WETNESS_BANDS: HexBand[] = [
+  { min: 0.06, color: "#7fd0f0", fill: 0.42 },
+  { min: 0.19, color: "#3b82f6", fill: 0.55 },
+  { min: 0.38, color: "#1d4ed8", fill: 0.68 },
+  { min: 0.63, color: "#1e2978", fill: 0.8 },
 ];
 
 function scoreOfRow(row: TambonRow, mode: LayerMode | null): number {
@@ -408,9 +440,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const mapRef = useRef<Leaflet.Map | null>(null);
   const leafletRef = useRef<typeof Leaflet | null>(null);
   const polyLayerRef = useRef<LeafletGeoJSON | null>(null);
-  const wetnessOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
-  const staticOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
-  const liveOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
+  const wetnessOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
+  const staticOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
+  const liveOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
+  const hexRendererRef = useRef<Leaflet.Renderer | null>(null);
   const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
   const buildingsPtsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const buildingsPtsCacheRef = useRef<Map<string, [number, number][]>>(new Map());
@@ -422,7 +455,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
-  const Z_HAZARD = 200; // static / wetness / live
   const Z_BUILDINGS = 350; // bumped above hazard so density reads through
   const Z_RADAR = 450; // RainViewer on top of everything raster
   // At z=12 a 5-10 m building footprint is ~0.2 px wide — sub-pixel and
@@ -434,7 +466,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
-  const [staticMeta, setStaticMeta] = useState<StaticOverlayMeta | null>(null);
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
 
@@ -484,18 +515,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     let active = true;
     (async () => {
       try {
-        const [vrRes, wRes, gRes, sRes] = await Promise.all([
+        const [vrRes, wRes, gRes] = await Promise.all([
           fetch("/data/village_risk.geojson"),
           fetch("/data/wetness_7d.json"),
           fetch("/data/wetness_grid.json"),
-          fetch("/data/static_overlay_meta.json"),
         ]);
         if (!vrRes.ok) throw new Error(`village_risk.geojson ${vrRes.status}`);
         const fc = (await vrRes.json()) as TambonCollection;
         if (active) setTambonFC(fc);
         if (wRes.ok && active) setWetness((await wRes.json()) as WetnessPayload);
         if (gRes.ok && active) setGrid((await gRes.json()) as WetnessGrid);
-        if (sRes.ok && active) setStaticMeta((await sRes.json()) as StaticOverlayMeta);
         try {
           const bRes = await fetch("/data/buildings_density_meta.json");
           if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
@@ -938,7 +967,30 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(map);
   }, [isMapReady, rows, selectedGid]);
 
-  // Static raster overlay
+  // Hexes are shared by all three modes — compute once per grid payload.
+  const hexCells = useMemo(() => (grid ? buildHexCells(grid) : null), [grid]);
+
+  // One canvas pane under the tambon outlines & station dots.
+  const ensureHexRenderer = (L: typeof Leaflet, map: Leaflet.Map): Leaflet.Renderer => {
+    if (!map.getPane("hazardHex")) {
+      const pane = map.createPane("hazardHex");
+      pane.style.zIndex = "340";
+      pane.style.pointerEvents = "none";
+      pane.style.opacity = "0.95";
+    }
+    if (!hexRendererRef.current) hexRendererRef.current = leafletRef.current!.canvas({ pane: "hazardHex" });
+    return hexRendererRef.current;
+  };
+
+  // Zoom-adaptive surface opacity: bold warning-map at overview,
+  // translucent up close so the terrain stays readable.
+  useEffect(() => {
+    const pane = mapRef.current?.getPane("hazardHex");
+    if (!pane) return;
+    pane.style.opacity = String(zoom <= 7 ? 0.95 : zoom === 8 ? 0.85 : zoom === 9 ? 0.72 : 0.58);
+  }, [zoom, isMapReady, layerMode]);
+
+  // Static susceptibility hex surface
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -947,16 +999,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       staticOverlayRef.current.removeFrom(map);
       staticOverlayRef.current = null;
     }
-    if (layerMode !== "static" || !staticMeta) return;
-    const [w, s, e, n] = staticMeta.bbox;
-    staticOverlayRef.current = L.imageOverlay("/data/static_overlay.png", [[s, w], [n, e]], {
-      opacity: 0.78,
-      interactive: false,
-      zIndex: Z_HAZARD,
-    }).addTo(map);
-  }, [isMapReady, layerMode, staticMeta]);
+    if (layerMode !== "static" || !grid?.static_norm || !hexCells) return;
+    const renderer = ensureHexRenderer(L, map);
+    staticOverlayRef.current = renderHexGroup(
+      L, renderer, hexCells, grid, grid.static_norm, 1.0, STATIC_BANDS,
+    ).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMapReady, layerMode, grid, hexCells]);
 
-  // Wetness raster overlay
+  // Wetness hex surface
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -965,26 +1016,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       wetnessOverlayRef.current.removeFrom(map);
       wetnessOverlayRef.current = null;
     }
-    if (layerMode !== "wetness" || !grid) return;
-    const aoiMask = grid.static_norm; // 0 outside AOI (sampled from susceptibility.tif)
-    const url = renderBandedGridToDataURL(
-      grid.cols,
-      grid.rows,
-      grid.rain_7d_mm,
-      grid.wetness_norm_cap_mm,
-      WETNESS_BANDS,
-      aoiMask,
-    );
-    if (!url) return;
-    const [w, s, e, n] = grid.grid_bbox;
-    wetnessOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
-      opacity: 0.88,
-      interactive: false,
-      zIndex: Z_HAZARD,
-    }).addTo(map);
-  }, [isMapReady, layerMode, grid]);
+    if (layerMode !== "wetness" || !grid || !hexCells) return;
+    const renderer = ensureHexRenderer(L, map);
+    wetnessOverlayRef.current = renderHexGroup(
+      L, renderer, hexCells, grid, grid.rain_7d_mm, grid.wetness_norm_cap_mm, WETNESS_BANDS,
+    ).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMapReady, layerMode, grid, hexCells]);
 
-  // Live combined raster
+  // Live combined hex surface
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -993,18 +1033,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       liveOverlayRef.current.removeFrom(map);
       liveOverlayRef.current = null;
     }
-    if (layerMode !== "live" || !grid) return;
+    if (layerMode !== "live" || !grid || !hexCells) return;
     const live = computeLiveGrid(grid);
-    const aoiMask = grid.static_norm;
-    const url = renderBandedGridToDataURL(grid.cols, grid.rows, live, 1.0, LIVE_BANDS, aoiMask);
-    if (!url) return;
-    const [w, s, e, n] = grid.grid_bbox;
-    liveOverlayRef.current = L.imageOverlay(url, [[s, w], [n, e]], {
-      opacity: 0.88,
-      interactive: false,
-      zIndex: Z_HAZARD,
-    }).addTo(map);
-  }, [isMapReady, layerMode, grid]);
+    const renderer = ensureHexRenderer(L, map);
+    liveOverlayRef.current = renderHexGroup(L, renderer, hexCells, grid, live, 1.0, LIVE_BANDS).addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMapReady, layerMode, grid, hexCells]);
 
   // Buildings density overlay
   useEffect(() => {
@@ -1180,26 +1214,26 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       const color = sp !== null ? bankPercentColor(sp) : "#8a9a9a";
       const flooding = sp !== null && sp >= 100;
 
-      // Flooding points get a white halo ring so they pop at any zoom —
-      // the NWPS trick for "gauges currently in flood".
-      if (flooding) {
-        L.circleMarker([lat, lng], {
-          radius: 9,
-          color: "rgba(255,255,255,0.9)",
-          weight: 1.6,
-          fill: false,
-          interactive: false,
-        }).addTo(group);
-      }
-
-      const marker = L.circleMarker([lat, lng], {
-        radius: flooding ? 6 : 4.5,
-        color: "rgba(10,19,24,0.85)",
-        weight: 1,
-        fillColor: color,
-        fillOpacity: 1,
-        interactive: true,
-      });
+      // Gauges currently over the bank become a pulsing beacon —
+      // an animated take on the NWPS "in flood" halo.
+      const marker = flooding
+        ? L.marker([lat, lng], {
+            icon: L.divIcon({
+              className: "",
+              html: `<span class="ff-flood-beacon" style="--c:${color}"><span class="ring"></span><span class="core"></span></span>`,
+              iconSize: [14, 14],
+              iconAnchor: [7, 7],
+            }),
+            interactive: true,
+          })
+        : L.circleMarker([lat, lng], {
+            radius: 4.5,
+            color: "rgba(10,19,24,0.85)",
+            weight: 1,
+            fillColor: color,
+            fillOpacity: 1,
+            interactive: true,
+          });
 
       const name = s.station.tele_station_name?.th ?? "(สถานี)";
       const agency = s.agency?.agency_shortname?.th ?? "";

@@ -38,6 +38,16 @@ uv run python scripts/02b_terrain_score.py --pilot
 
 Pilot outputs use `_pilot` suffix and are independent of full-AOI outputs.
 
+## Nationwide expansion (Thailand)
+
+1. Run `gee/flashflood_susceptibility_thailand.js` in the GEE Code Editor
+   (static-only weights, bands `SUSCEPTIBILITY` + `CLASS`, scale 100 m).
+2. GEE shards the country export into several GeoTIFFs in Drive —
+   download **all** of them into `data/gee_exports/`.
+3. `uv run python scripts/13_merge_gee_exports.py` → mosaics into
+   `data/output/susceptibility.tif` (works with 1..N shards).
+4. Hand off: the webapp grid/hex steps re-run from the merged raster.
+
 ## Data sources
 
 | Layer | Source | Auth | Free |

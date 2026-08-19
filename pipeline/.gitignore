@@ -21,3 +21,6 @@ data/aoi/gadm41_THA_*.json.zip
 !data/aoi/aoi_north_thailand.geojson
 !data/aoi/aoi_north_provinces.geojson
 !data/aoi/aoi_bbox.json
+
+# GEE shards (large; merged by 13_merge_gee_exports.py)
+data/gee_exports/

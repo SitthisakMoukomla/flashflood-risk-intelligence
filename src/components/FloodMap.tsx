@@ -21,6 +21,7 @@ import {
   Waves,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
 import type { GeoJSON as LeafletGeoJSON } from "leaflet";
@@ -1650,6 +1651,39 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
           </Link>
         </div>
+
+        <div
+          className="glass"
+          style={{
+            padding: "8px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <Image
+            src="/brand/geography-lounge.png"
+            alt="Geography Lounge"
+            width={30}
+            height={30}
+            style={{ width: 30, height: 30, borderRadius: 6, objectFit: "cover", flex: "none" }}
+          />
+          <span style={{ minWidth: 0 }}>
+            <span
+              style={{
+                display: "block",
+                fontSize: 11,
+                color: "var(--ink-3)",
+                letterSpacing: 0.3,
+              }}
+            >
+              พัฒนาโดย
+            </span>
+            <span style={{ display: "block", fontSize: 12.5, fontWeight: 600 }}>
+              Geography Lounge
+            </span>
+          </span>
+        </div>
       </div>
 
       {/* Right drawer */}
@@ -1931,7 +1965,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <AlertTriangle size={20} style={{ color: "var(--accent)" }} />
+                <Image
+                  src="/brand/geography-lounge.png"
+                  alt="Geography Lounge"
+                  width={26}
+                  height={26}
+                  style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }}
+                />
                 <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: -0.2 }}>
                   FLASHFLOOD
                 </span>
@@ -2281,9 +2321,20 @@ function HeroRibbon({
             borderRight: "1px solid var(--hairline-2)",
           }}
         >
-          <span style={{ width: 22, height: 22, color: "var(--accent)", display: "flex", flex: "none" }}>
-            <AlertTriangle size={22} strokeWidth={2.2} />
-          </span>
+          <Image
+            src="/brand/geography-lounge.png"
+            alt="Geography Lounge"
+            width={26}
+            height={26}
+            priority
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              flex: "none",
+              objectFit: "cover",
+            }}
+          />
           <span style={{ fontWeight: 700, letterSpacing: -0.2, fontSize: 14, whiteSpace: "nowrap" }}>
             FLASHFLOOD
             <span className="hero-wordmark-sub" style={{ color: "var(--ink-3)", fontWeight: 400 }}>

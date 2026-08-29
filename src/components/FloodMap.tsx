@@ -482,12 +482,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const waterStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const radarCacheRef = useRef<Map<string, Leaflet.TileLayer>>(new Map());
   const sarFloodLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const sarImageLayerRef = useRef<Leaflet.TileLayer | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
   const Z_BUILDINGS = 350; // bumped above hazard so density reads through
   const Z_RADAR = 450; // RainViewer on top of everything raster
   const Z_SAR_FLOOD = 400; // observed flood above hazard, below radar
+  const SAR_IMAGE_MIN_ZOOM = 8;
   // At z=12 a 5-10 m building footprint is ~0.2 px wide — sub-pixel and
   // effectively invisible on canvas. The density PNG actually reads better
   // until ~z=14 where buildings start being ≥1 px and the polygon layer
@@ -510,6 +512,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [sarFlood, setSarFlood] = useState<SarFloodFC | null>(null);
   const [sarFloodMeta, setSarFloodMeta] = useState<SarFloodMeta | null>(null);
   const [showSarFlood, setShowSarFlood] = useState(true);
+  const [sarImage, setSarImage] = useState<{ tileUrl: string; windowDays: number } | null>(null);
+  const [showSarImage, setShowSarImage] = useState(false);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
   // Measured river levels are the most trustworthy layer we have and the
@@ -564,6 +568,15 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
         } catch {
           /* optional */
+        }
+        try {
+          const r = await fetch("/api/sar-mosaic");
+          if (r.ok && active) {
+            const j = (await r.json()) as { tileUrl?: string; windowDays?: number };
+            if (j.tileUrl) setSarImage({ tileUrl: j.tileUrl, windowDays: j.windowDays ?? 7 });
+          }
+        } catch {
+          /* optional — the radar basemap is a nice-to-have */
         }
         try {
           const [fmRes, fRes] = await Promise.all([
@@ -1097,6 +1110,32 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMapReady, layerMode, grid, hexCells]);
 
+  // Raw Sentinel-1 radar mosaic — the imagery the flood mask is derived
+  // from, so a user can judge for themselves whether a polygon sits on a
+  // river or on a field. Open water is near-black: a smooth surface
+  // mirrors the radar pulse away from the sensor.
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (sarImageLayerRef.current) {
+      sarImageLayerRef.current.removeFrom(map);
+      sarImageLayerRef.current = null;
+    }
+    if (!showSarImage || !sarImage) return;
+    sarImageLayerRef.current = L.tileLayer(sarImage.tileUrl, {
+      opacity: 0.9,
+      // The mosaic endpoint answers 204 below z8 — a tile that wide spans
+      // too many scenes to compose — so don't ask for what it won't serve.
+      minZoom: SAR_IMAGE_MIN_ZOOM,
+      maxNativeZoom: 14,
+      // The basemap is a tile layer too, so this has to outrank it inside
+      // the shared tile pane while staying under the hazard hex pane (340).
+      zIndex: 250,
+      attribution: "Sentinel-1 · Planetary Computer",
+    }).addTo(map);
+  }, [isMapReady, showSarImage, sarImage]);
+
   // Observed flood extent (Sentinel-1 / Copernicus GFM)
   useEffect(() => {
     const L = leafletRef.current;
@@ -1600,6 +1639,20 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             }
             icon={<Satellite size={18} strokeWidth={2} />}
             onClick={() => setShowSarFlood((v) => !v)}
+          />
+          <LayerSwitch
+            on={showSarImage}
+            disabled={!sarImage}
+            label="ภาพเรดาร์ Sentinel-1"
+            hint={
+              !sarImage
+                ? "ไม่มีข้อมูล"
+                : zoom < SAR_IMAGE_MIN_ZOOM
+                  ? "ซูมเข้าอีกเพื่อดูภาพเรดาร์"
+                  : `ภาพดิบ ${sarImage.windowDays} วันล่าสุด · ผิวน้ำเป็นสีดำ`
+            }
+            icon={<Satellite size={18} strokeWidth={2} />}
+            onClick={() => setShowSarImage((v) => !v)}
           />
           <LayerSwitch
             on={showRainOverlay}

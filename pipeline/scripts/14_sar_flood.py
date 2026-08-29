@@ -94,6 +94,12 @@ WEB_MERCATOR_HALF = 20037508.342789244
 JRC_RES_DEG = 0.001  # ~110 m — fine enough to cut a river out of a 20 m mask
 UA = "flashflood-risk-intelligence (github.com/SitthisakMoukomla)"
 
+# The tile archive is ~13 MB and the cron rewrites it twice a day. Kept in
+# git that is ~800 MB of history a month, so it goes to object storage
+# instead when credentials are present; without them it stays in public/
+# so local runs and first-time setup still work.
+R2_ENV = ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET")
+
 try:  # certifi is present via rasterio's deps; fall back to system store.
     import certifi
 
@@ -361,6 +367,47 @@ def encode_tile_png(coverage: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
+def upload_to_r2(path: Path) -> str | None:
+    """Put the archive in R2 and return its public URL, or None if not configured.
+
+    Uses the S3-compatible endpoint, so boto3 needs no Cloudflare-specific
+    code. Content-Type matters: the browser reads this by range request and
+    some CDNs will not serve ranges for an unknown type."""
+    import os
+
+    missing = [k for k in R2_ENV if not os.environ.get(k)]
+    if missing:
+        return None
+    try:
+        import boto3
+    except ImportError:
+        click.echo("[r2] boto3 not installed — keeping the archive local", err=True)
+        return None
+
+    account = os.environ["R2_ACCOUNT_ID"]
+    bucket = os.environ["R2_BUCKET"]
+    key = path.name
+    client = boto3.client(
+        "s3",
+        endpoint_url=f"https://{account}.r2.cloudflarestorage.com",
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+    )
+    with open(path, "rb") as f:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=f,
+            ContentType="application/octet-stream",
+            CacheControl="public, max-age=1800",
+        )
+    base = os.environ.get("R2_PUBLIC_BASE", "").rstrip("/")
+    url = f"{base}/{key}" if base else None
+    click.echo(f"[r2] uploaded {key} to {bucket}" + (f" → {url}" if url else ""))
+    return url
+
+
 def write_pmtiles(
     levels: dict[int, dict[tuple[int, int], np.ndarray]],
     out_path: Path,
@@ -614,12 +661,14 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
     pm_out = PUBLIC_DATA / "sar_flood.pmtiles"
     tile_count = 0
     pm_bytes = 0
+    tiles_url: str | None = None
     if tiles:
         levels = build_pyramid(tiles)
         per_level = ", ".join(f"z{z}:{len(levels[z])}" for z in sorted(levels))
         click.echo(f"[tiles] {per_level}")
         tile_count, pm_bytes = write_pmtiles(levels, pm_out, (rw, rs, re_, rn))
         click.echo(f"[tiles] {pm_out.name} {tile_count:,} tiles, {pm_bytes / 1024:.0f} KB")
+        tiles_url = upload_to_r2(pm_out)
     else:
         click.echo("[tiles] no flooded tiles — archive not written")
 
@@ -652,6 +701,9 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "pixel_size_m": 20,
                 "tiles": {
                     "file": "sar_flood.pmtiles",
+                    # Absolute when the archive lives in object storage;
+                    # the frontend falls back to /data/<file> without it.
+                    "url": tiles_url,
                     "min_zoom": TILE_MIN_Z,
                     "max_zoom": TILE_MAX_Z,
                     "count": tile_count,

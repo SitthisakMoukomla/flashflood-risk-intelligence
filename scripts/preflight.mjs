@@ -31,14 +31,22 @@ if (!existsSync(metaPath)) {
   const t = m.tiles;
   if (!t) {
     problems.push("flood metadata has no tile pyramid — the map has nothing to draw");
-  } else if (!existsSync(`public/data/${t.file}`)) {
-    problems.push(`metadata points at ${t.file}, which does not exist`);
   } else {
-    const kb = statSync(`public/data/${t.file}`).size / 1024;
-    if (kb < 100) problems.push(`${t.file} is only ${kb.toFixed(0)} KB — likely a partial run`);
     if ((t.count ?? 0) < 500)
       problems.push(`tile pyramid holds ${t.count} tiles — a full run builds thousands`);
-    notes.push(`flood tiles: ${t.count} across z${t.min_zoom}-z${t.max_zoom}, ${kb.toFixed(0)} KB`);
+    // The archive is hosted in R2; only a local copy needs a size check.
+    const local = `public/data/${t.file}`;
+    if (!t.url && !existsSync(local))
+      problems.push(`no tile URL and no local ${t.file} — the map would draw nothing`);
+    if (existsSync(local)) {
+      const kb = statSync(local).size / 1024;
+      if (!t.url && kb < 100)
+        problems.push(`${t.file} is only ${kb.toFixed(0)} KB — likely a partial run`);
+    }
+    notes.push(
+      `flood tiles: ${t.count} across z${t.min_zoom}-z${t.max_zoom}` +
+        (t.url ? ` (hosted)` : ` (local)`),
+    );
   }
   notes.push(`flood: ${(m.flood_area_rai ?? 0).toLocaleString()} rai over ${days} days`);
 }

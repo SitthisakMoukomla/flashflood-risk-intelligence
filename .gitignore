@@ -24,3 +24,6 @@ pnpm-debug.log*
 
 CLAUDE.md
 tsconfig.tsbuildinfo
+
+# Tile archive lives in R2 — too big to rewrite in git twice a day
+public/data/sar_flood.pmtiles

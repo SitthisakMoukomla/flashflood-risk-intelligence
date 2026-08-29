@@ -146,6 +146,8 @@ type SarFloodMeta = {
   oldest_observation: string | null;
   tiles?: {
     file: string;
+    /** Absolute URL when the archive is hosted off-repo (R2). */
+    url?: string | null;
     min_zoom: number;
     max_zoom: number;
     count: number;
@@ -1206,7 +1208,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     (async () => {
       const { PMTiles, leafletRasterLayer } = await import("pmtiles");
       if (cancelled) return;
-      const archive = new PMTiles(`/data/${t.file}`);
+      // Hosted off-repo once the archive outgrew git; falls back to the
+      // copy in public/ so local runs and first-time setup still work.
+      const archive = new PMTiles(t.url || `/data/${t.file}`);
       const layer = leafletRasterLayer(archive, {
         opacity: 1, // coverage is already encoded in each tile's alpha
         minZoom: 0,

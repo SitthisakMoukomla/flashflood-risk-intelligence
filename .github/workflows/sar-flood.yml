@@ -39,7 +39,6 @@ jobs:
           sparse-checkout: |
             pipeline/scripts/14_sar_flood.py
             pipeline/data/aoi/gadm41_THA_3.json.zip
-            public/data/sar_flood.pmtiles
             public/data/sar_flood.geojson
             public/data/sar_flood_meta.json
           sparse-checkout-cone-mode: false
@@ -49,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi pillow pmtiles
+        run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi pillow pmtiles boto3
 
       - name: Fetch GFM tiles and build the flood tile pyramid
         working-directory: pipeline
@@ -57,13 +56,21 @@ jobs:
           # rasterio reads the COGs over HTTP; keep GDAL from listing dirs.
           GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
           CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif"
+          # The tile archive goes to object storage rather than git — it is
+          # ~13 MB rewritten twice a day. Without these the run still works
+          # and simply leaves the archive in public/data.
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
         run: python scripts/14_sar_flood.py --hours ${{ github.event.inputs.hours || '168' }}
 
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/data/sar_flood.pmtiles public/data/sar_flood.geojson public/data/sar_flood_meta.json
+          git add public/data/sar_flood.geojson public/data/sar_flood_meta.json
           if git diff --cached --quiet; then
             echo "no change in observed flood extent — nothing to commit"
             exit 0

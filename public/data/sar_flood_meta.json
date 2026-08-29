@@ -1,17 +1,29 @@
 {
-  "generated_at": "2026-08-29T09:20:55.626688+00:00",
+  "generated_at": "2026-08-29T11:22:54.525891+00:00",
   "source": "Copernicus EMS Global Flood Monitoring (Sentinel-1), via EODC STAC",
   "window_hours": 168,
   "composite": "latest observation wins where passes overlap",
-  "tiles_seen": 211,
-  "tiles_with_flood": 90,
-  "polygons": 14075,
+  "tiles_seen": 215,
+  "tiles_with_flood": 91,
+  "polygons": 14073,
   "clipped_to": "Thailand (GADM 4.1 level-3 dissolved)",
   "water_filter": "pixels on JRC GSW seasonality ≥6 months/yr erased before vectorising",
-  "water_pixels_erased": 1022049,
-  "flood_area_km2": 1266.5,
-  "flood_area_rai": 791564,
-  "latest_observation": "2026-08-28T22:53:12Z",
+  "water_pixels_erased": 1022649,
+  "flood_area_km2": 1266.64,
+  "flood_area_rai": 791647,
+  "latest_observation": "2026-08-28T22:54:53Z",
   "oldest_observation": "2026-08-22T11:25:34Z",
-  "pixel_size_m": 20
+  "pixel_size_m": 20,
+  "raster": {
+    "file": "sar_flood.png",
+    "bbox": [
+      97.3455,
+      5.616,
+      105.6395,
+      20.4631
+    ],
+    "width": 4147,
+    "height": 7424,
+    "res_deg": 0.002
+  }
 }

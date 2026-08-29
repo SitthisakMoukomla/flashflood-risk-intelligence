@@ -138,15 +138,13 @@ type SarFloodMeta = {
   flood_area_rai: number;
   latest_observation: string | null;
   oldest_observation: string | null;
-};
-
-type SarFloodFC = {
-  type: "FeatureCollection";
-  features: {
-    type: "Feature";
-    geometry: { type: "Polygon"; coordinates: number[][][] };
-    properties: { observed_at: string | null; tile: string };
-  }[];
+  raster?: {
+    file: string;
+    bbox: [number, number, number, number]; // west, south, east, north
+    width: number;
+    height: number;
+    res_deg: number;
+  };
 };
 
 const THAIWATER_RAIN_24H_URL =
@@ -481,7 +479,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const waterStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const radarCacheRef = useRef<Map<string, Leaflet.TileLayer>>(new Map());
-  const sarFloodLayerRef = useRef<Leaflet.LayerGroup | null>(null);
+  const sarFloodLayerRef = useRef<Leaflet.ImageOverlay | null>(null);
   const sarImageLayerRef = useRef<Leaflet.TileLayer | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
@@ -509,7 +507,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [radarIdx, setRadarIdx] = useState(0);
   const [radarPlaying, setRadarPlaying] = useState(true);
   const [showBuildings, setShowBuildings] = useState(false);
-  const [sarFlood, setSarFlood] = useState<SarFloodFC | null>(null);
   const [sarFloodMeta, setSarFloodMeta] = useState<SarFloodMeta | null>(null);
   const [showSarFlood, setShowSarFlood] = useState(true);
   const [sarImage, setSarImage] = useState<{ tileUrl: string; windowDays: number } | null>(null);
@@ -579,12 +576,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           /* optional — the radar basemap is a nice-to-have */
         }
         try {
-          const [fmRes, fRes] = await Promise.all([
-            fetch("/data/sar_flood_meta.json"),
-            fetch("/data/sar_flood.geojson"),
-          ]);
+          // Only the metadata: the flood layer is drawn from sar_flood.png,
+          // so the polygon file (~6 MB) stays server-side for analysis.
+          const fmRes = await fetch("/data/sar_flood_meta.json");
           if (fmRes.ok && active) setSarFloodMeta((await fmRes.json()) as SarFloodMeta);
-          if (fRes.ok && active) setSarFlood((await fRes.json()) as SarFloodFC);
         } catch {
           /* optional — the SAR layer only exists once the cron has run */
         }
@@ -1136,7 +1131,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(map);
   }, [isMapReady, showSarImage, sarImage]);
 
-  // Observed flood extent (Sentinel-1 / Copernicus GFM)
+  // Observed flood extent (Sentinel-1 / Copernicus GFM), drawn as a raster.
+  // Vectorising 20 m pixels and simplifying them to keep the payload sane
+  // left visibly faceted edges; the mask itself has none.
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
@@ -1145,41 +1142,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       sarFloodLayerRef.current.removeFrom(map);
       sarFloodLayerRef.current = null;
     }
-    if (!showSarFlood || !sarFlood || sarFlood.features.length === 0) return;
-    if (!map.getPane("sarFlood")) {
-      const pane = map.createPane("sarFlood");
-      pane.style.zIndex = String(Z_SAR_FLOOD);
-    }
-    const group = L.layerGroup();
-    L.geoJSON(sarFlood as unknown as GeoJSON.GeoJsonObject, {
-      pane: "sarFlood",
-      style: {
-        // Water blue, deliberately different from every risk colour so
-        // "observed flood" never reads as "modelled risk".
-        color: "#22d3ee",
-        weight: 1,
-        opacity: 0.9,
-        fillColor: "#0ea5e9",
-        fillOpacity: 0.55,
-      },
-      onEachFeature: (feature, layer) => {
-        const obs = (feature.properties as { observed_at?: string | null })?.observed_at;
-        layer.bindTooltip(
-          `<b>น้ำท่วมตรวจพบ</b><br/>Sentinel-1 · Copernicus GFM` +
-            (obs
-              ? `<br/>ถ่ายภาพ <b>${new Date(obs).toLocaleDateString("th-TH", {
-                  day: "numeric",
-                  month: "short",
-                  timeZone: "Asia/Bangkok",
-                })} ${formatTimeBKK(obs)}</b>`
-              : ""),
-          { sticky: true, opacity: 0.95, direction: "top" },
-        );
-      },
-    }).addTo(group);
-    sarFloodLayerRef.current = group.addTo(map);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMapReady, showSarFlood, sarFlood]);
+    const r = sarFloodMeta?.raster;
+    if (!showSarFlood || !r) return;
+    const [w, s, e, n] = r.bbox;
+    sarFloodLayerRef.current = L.imageOverlay(`/data/${r.file}`, [[s, w], [n, e]], {
+      opacity: 1, // alpha already baked into the PNG
+      interactive: false,
+      zIndex: Z_SAR_FLOOD,
+      className: "ff-sar-flood",
+    }).addTo(map);
+  }, [isMapReady, showSarFlood, sarFloodMeta]);
 
   // Buildings density overlay
   useEffect(() => {
@@ -1629,12 +1601,19 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           </div>
           <LayerSwitch
             on={showSarFlood}
-            disabled={!sarFlood}
+            disabled={!sarFloodMeta?.raster}
             label="น้ำท่วมตรวจพบ (ดาวเทียม)"
             hint={
               sarFloodMeta
-                ? `Sentinel-1 · รวม ${Math.round(sarFloodMeta.window_hours / 24)} วัน · ` +
-                  `${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่`
+                ? `รวม ${Math.round(sarFloodMeta.window_hours / 24)} วัน · ` +
+                  `${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่ · ล่าสุด ` +
+                  (sarFloodMeta.latest_observation
+                    ? new Date(sarFloodMeta.latest_observation).toLocaleDateString("th-TH", {
+                        day: "numeric",
+                        month: "short",
+                        timeZone: "Asia/Bangkok",
+                      })
+                    : "—")
                 : "ไม่มีข้อมูล"
             }
             icon={<Satellite size={18} strokeWidth={2} />}

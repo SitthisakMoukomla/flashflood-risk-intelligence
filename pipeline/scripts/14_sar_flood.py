@@ -7,8 +7,13 @@ tiles intersecting Thailand for the last N hours, keeps only the ones that
 actually contain flood pixels, and writes a small GeoJSON the webapp can
 overlay as its own layer:
 
-  public/data/sar_flood.geojson       — flood polygons (WGS84) + per-tile timestamps
+  public/data/sar_flood.png           — flood mask as an RGBA overlay
+  public/data/sar_flood.geojson       — same extent as polygons (analysis)
   public/data/sar_flood_meta.json     — coverage summary for the UI
+
+The webapp draws the PNG, not the polygons: vectorising 20 m pixels and
+simplifying them to keep the payload sane left visibly faceted edges, and
+the raster has none while being an order of magnitude smaller.
 
 The GFM ensemble raster is uint8 in an Equi7Grid projection:
   0   = not flooded (observed)
@@ -68,6 +73,13 @@ JRC_CACHE = REPO_ROOT / "data" / "jrc" / "seasonality_thailand.tif"
 # flood mask *before* vectorising — masking whole polygons instead would
 # leave the river inside a large polygon untouched.
 WATER_MONTHS = 6
+# Overlay grid. 0.002° ≈ 220 m: coarse enough that the whole country is a
+# 32 MP mask the browser can decode without strain, fine enough that the
+# 2 ha floor above still occupies a pixel.
+RASTER_RES_DEG = 0.002
+# Cyan, matching the layer's colour in the UI.
+RASTER_RGB = (34, 211, 238)
+RASTER_ALPHA = 165
 JRC_RES_DEG = 0.001  # ~110 m — fine enough to cut a river out of a 20 m mask
 UA = "flashflood-risk-intelligence (github.com/SitthisakMoukomla)"
 
@@ -196,6 +208,27 @@ def load_thailand() -> object:
     return prep(geom)
 
 
+def accumulate_mask(
+    flooded: np.ndarray, ds, acc: np.ndarray, acc_transform
+) -> None:
+    """Burn one tile's flood mask into the nationwide overlay grid."""
+    from rasterio.warp import Resampling, reproject
+
+    patch = np.zeros(acc.shape, dtype="uint8")
+    reproject(
+        source=flooded.astype("uint8"),
+        destination=patch,
+        src_transform=ds.transform,
+        src_crs=ds.crs,
+        dst_transform=acc_transform,
+        dst_crs="EPSG:4326",
+        resampling=Resampling.max,  # keep a flooded pixel visible when downsampling
+        src_nodata=0,
+        dst_nodata=0,
+    )
+    np.maximum(acc, patch, out=acc)
+
+
 def erase_water(flooded: np.ndarray, ds, water_ds) -> tuple[np.ndarray, int]:
     """Remove pixels that normally hold water from a tile's flood mask."""
     from rasterio.warp import Resampling, reproject
@@ -218,7 +251,14 @@ def erase_water(flooded: np.ndarray, ds, water_ds) -> tuple[np.ndarray, int]:
 
 
 def tile_flood_polygons(
-    href: str, min_pixels: int, min_poly_px: int, simplify_m: float, thailand, water_ds
+    href: str,
+    min_pixels: int,
+    min_poly_px: int,
+    simplify_m: float,
+    thailand,
+    water_ds,
+    acc: np.ndarray | None = None,
+    acc_transform=None,
 ) -> tuple[list[dict], float, int, int]:
     """Flooded blobs of one GFM tile as WGS84 polygons, clipped to Thailand.
 
@@ -237,6 +277,8 @@ def tile_flood_polygons(
         flooded, water_px = erase_water(flooded, ds, water_ds)
         if int(flooded.sum()) < min_pixels:
             return [], 0.0, raw_count, water_px
+        if acc is not None:
+            accumulate_mask(flooded, ds, acc, acc_transform)
         mask = flooded.astype(np.uint8)
         min_area = min_poly_px * px_area
         geoms: list[dict] = []
@@ -293,6 +335,15 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
     thailand = load_thailand()
     country_bounds = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
     _, _, water_ds = load_water_reference(country_bounds)
+
+    from rasterio.transform import from_origin
+
+    rw, rs, re_, rn = country_bounds
+    acc_w = int(math.ceil((re_ - rw) / RASTER_RES_DEG))
+    acc_h = int(math.ceil((rn - rs) / RASTER_RES_DEG))
+    acc = np.zeros((acc_h, acc_w), dtype="uint8")
+    acc_transform = from_origin(rw, rn, RASTER_RES_DEG, RASTER_RES_DEG)
+    click.echo(f"[raster] overlay grid {acc_w}x{acc_h} @ {RASTER_RES_DEG}°")
     total_water_px = 0
     features: list[dict] = []
     total_area_m2 = 0.0
@@ -307,7 +358,8 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         obs = item["properties"].get("datetime")
         try:
             geoms, area_m2, raw_px, water_px = tile_flood_polygons(
-                asset["href"], min_pixels, min_poly_px, simplify_m, thailand, water_ds
+                asset["href"], min_pixels, min_poly_px, simplify_m, thailand,
+                water_ds, acc, acc_transform,
             )
             total_water_px += water_px
         except Exception as e:  # a single bad tile must not kill the run
@@ -412,11 +464,42 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "latest_observation": latest_obs,
                 "oldest_observation": oldest_obs,
                 "pixel_size_m": 20,
+                "raster": {
+                    "file": "sar_flood.png",
+                    "bbox": [
+                        rw,
+                        rn - acc_h * RASTER_RES_DEG,
+                        rw + acc_w * RASTER_RES_DEG,
+                        rn,
+                    ],
+                    "width": acc_w,
+                    "height": acc_h,
+                    "res_deg": RASTER_RES_DEG,
+                },
             },
             indent=2,
             ensure_ascii=False,
         )
     )
+    # Overlay PNG — what the webapp actually draws.
+    png_out = PUBLIC_DATA / "sar_flood.png"
+    rgba = np.zeros((acc.shape[0], acc.shape[1], 4), dtype="uint8")
+    hit = acc > 0
+    rgba[..., 0][hit] = RASTER_RGB[0]
+    rgba[..., 1][hit] = RASTER_RGB[1]
+    rgba[..., 2][hit] = RASTER_RGB[2]
+    rgba[..., 3][hit] = RASTER_ALPHA
+    try:
+        from PIL import Image
+
+        Image.fromarray(rgba, "RGBA").save(png_out, optimize=True)
+        click.echo(
+            f"[raster] {png_out.name} {acc.shape[1]}x{acc.shape[0]} "
+            f"{png_out.stat().st_size / 1024:.0f} KB, {int(hit.sum()):,} lit pixels"
+        )
+    except ImportError:
+        click.echo("[raster] Pillow missing — PNG not written", err=True)
+
     size_kb = geo_out.stat().st_size / 1024
     click.echo(
         f"[write] {geo_out.name} {len(features)} polygon(s), {size_kb:.1f} KB — "

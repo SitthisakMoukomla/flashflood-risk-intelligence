@@ -1702,11 +1702,20 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               !sarImage
                 ? "ไม่มีข้อมูล"
                 : zoom < SAR_IMAGE_MIN_ZOOM
-                  ? "ซูมเข้าอีกเพื่อดูภาพเรดาร์"
+                  ? "เปิดแล้วจะซูมเข้าให้ · ผิวน้ำเป็นสีดำ"
                   : `ภาพดิบ ${sarImage.windowDays} วันล่าสุด · ผิวน้ำเป็นสีดำ`
             }
             icon={<Satellite size={18} strokeWidth={2} />}
-            onClick={() => setShowSarImage((v) => !v)}
+            onClick={() => {
+              const turningOn = !showSarImage;
+              setShowSarImage(turningOn);
+              // The mosaic endpoint serves nothing below z8, so switching
+              // the layer on from a wide view would show an empty map and
+              // leave the user to guess why. Zoom in for them instead.
+              if (turningOn && mapRef.current && mapRef.current.getZoom() < SAR_IMAGE_MIN_ZOOM) {
+                mapRef.current.setZoom(SAR_IMAGE_MIN_ZOOM);
+              }
+            }}
           />
           <LayerSwitch
             on={showRainOverlay}

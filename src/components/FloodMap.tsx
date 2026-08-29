@@ -270,6 +270,15 @@ const BASEMAPS: Record<
   },
 };
 
+// Place names and boundaries, drawn above every data layer. Without it
+// the radar mosaic is an unlabelled grey field — you cannot tell which
+// province you are looking at, which is exactly when you need to.
+const LABELS_LAYER = {
+  url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  attribution: "Labels &copy; Esri",
+  maxNativeZoom: 16,
+};
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 const PROVINCE_NAMES: Record<string, string> = {
@@ -536,6 +545,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const radarCacheRef = useRef<Map<string, Leaflet.TileLayer>>(new Map());
   const sarFloodLayerRef = useRef<Leaflet.TileLayer | Leaflet.Layer | null>(null);
   const sarImageLayerRef = useRef<Leaflet.TileLayer | null>(null);
+  const labelsLayerRef = useRef<Leaflet.TileLayer | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
@@ -566,6 +576,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [showSarFlood, setShowSarFlood] = useState(true);
   const [sarImage, setSarImage] = useState<{ tileUrl: string; windowDays: number } | null>(null);
   const [showSarImage, setShowSarImage] = useState(false);
+  const [showLabels, setShowLabels] = useState(true);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
   // Measured river levels are the most trustworthy layer we have and the
@@ -943,6 +954,29 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       zIndex: 0,
     }).addTo(map);
   }, [isMapReady, basemap]);
+
+  // Place-name and boundary labels, above the data so they stay readable.
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (labelsLayerRef.current) {
+      labelsLayerRef.current.removeFrom(map);
+      labelsLayerRef.current = null;
+    }
+    if (!showLabels) return;
+    if (!map.getPane("labels")) {
+      const pane = map.createPane("labels");
+      pane.style.zIndex = "480"; // over hazard hexes, flood and radar
+      pane.style.pointerEvents = "none";
+    }
+    labelsLayerRef.current = L.tileLayer(LABELS_LAYER.url, {
+      pane: "labels",
+      maxNativeZoom: LABELS_LAYER.maxNativeZoom,
+      attribution: LABELS_LAYER.attribution,
+      opacity: 0.95,
+    }).addTo(map);
+  }, [isMapReady, showLabels]);
 
   // User location pin
   useEffect(() => {
@@ -1608,7 +1642,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 
       {/* Left mode picker + layer toggles */}
       <div
-        className="desktop-only"
+        className="desktop-only control-stack"
         style={{
           position: "absolute",
           top: 88,
@@ -1618,6 +1652,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           display: "flex",
           flexDirection: "column",
           gap: 10,
+          // The list outgrew the viewport and covered the map controls and
+          // legend pinned bottom-left. Stop it short of them: 88px header,
+          // ~298px for the control cluster and legend, 12px breathing room.
+          maxHeight: "calc(100vh - 398px)",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+          paddingRight: 4,
         }}
       >
         <div className="glass mode">
@@ -1716,6 +1757,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                 mapRef.current.setZoom(SAR_IMAGE_MIN_ZOOM);
               }
             }}
+          />
+          <LayerSwitch
+            on={showLabels}
+            label="ชื่อสถานที่ + ขอบเขต"
+            hint="จังหวัด อำเภอ และเส้นแบ่งเขต"
+            icon={<MapPin size={18} strokeWidth={2} />}
+            onClick={() => setShowLabels((v) => !v)}
           />
           <LayerSwitch
             on={showRainOverlay}
@@ -2252,6 +2300,46 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             </div>
 
             <div className="caps" style={{ marginTop: 16 }}>เลเยอร์เพิ่มเติม</div>
+            <LayerSwitch
+              on={showSarFlood}
+              disabled={!sarFloodMeta?.tiles}
+              label="น้ำท่วมตรวจพบ (ดาวเทียม)"
+              hint={
+                sarFloodMeta
+                  ? `รวม ${Math.round(sarFloodMeta.window_hours / 24)} วัน · ` +
+                    `${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่`
+                  : "ไม่มีข้อมูล"
+              }
+              icon={<Waves size={18} strokeWidth={2} />}
+              onClick={() => setShowSarFlood((v) => !v)}
+            />
+            <LayerSwitch
+              on={showSarImage}
+              disabled={!sarImage}
+              label="ภาพเรดาร์ Sentinel-1"
+              hint={
+                !sarImage
+                  ? "ไม่มีข้อมูล"
+                  : zoom < SAR_IMAGE_MIN_ZOOM
+                    ? "เปิดแล้วจะซูมเข้าให้ · ผิวน้ำเป็นสีดำ"
+                    : `ภาพดิบ ${sarImage.windowDays} วันล่าสุด · ผิวน้ำเป็นสีดำ`
+              }
+              icon={<Satellite size={18} strokeWidth={2} />}
+              onClick={() => {
+                const turningOn = !showSarImage;
+                setShowSarImage(turningOn);
+                if (turningOn && mapRef.current && mapRef.current.getZoom() < SAR_IMAGE_MIN_ZOOM) {
+                  mapRef.current.setZoom(SAR_IMAGE_MIN_ZOOM);
+                }
+              }}
+            />
+            <LayerSwitch
+              on={showLabels}
+              label="ชื่อสถานที่ + ขอบเขต"
+              hint="จังหวัด อำเภอ และเส้นแบ่งเขต"
+              icon={<MapPin size={18} strokeWidth={2} />}
+              onClick={() => setShowLabels((v) => !v)}
+            />
             <LayerSwitch
               on={showRainOverlay}
               disabled={!rainLayer}

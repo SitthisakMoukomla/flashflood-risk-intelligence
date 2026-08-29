@@ -829,3 +829,24 @@ a { color: inherit; }
 .ff-sar-flood {
   image-rendering: pixelated;
 }
+
+/* The layer list grew past the viewport and covered the map controls and
+   legend pinned to the bottom-left. Cap it and let it scroll on its own
+   instead: 88px clears the header, 210px leaves the controls and legend
+   their space. */
+.control-stack {
+  max-height: calc(100vh - 88px - 210px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+.control-stack::-webkit-scrollbar {
+  width: 6px;
+}
+.control-stack::-webkit-scrollbar-thumb {
+  background: var(--hairline-2);
+  border-radius: 999px;
+}
+.control-stack::-webkit-scrollbar-track {
+  background: transparent;
+}

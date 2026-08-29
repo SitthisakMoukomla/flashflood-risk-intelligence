@@ -1,14 +1,17 @@
 {
-  "generated_at": "2026-08-29T05:12:01.854132+00:00",
+  "generated_at": "2026-08-29T05:48:16.799522+00:00",
   "source": "Copernicus EMS Global Flood Monitoring (Sentinel-1), via EODC STAC",
-  "window_hours": 48,
-  "tiles_seen": 60,
-  "tiles_with_flood": 27,
-  "polygons": 4129,
+  "window_hours": 168,
+  "composite": "latest observation wins where passes overlap",
+  "tiles_seen": 211,
+  "tiles_with_flood": 92,
+  "polygons": 12740,
   "clipped_to": "Thailand (GADM 4.1 level-3 dissolved)",
-  "flood_area_km2": 300.96,
-  "flood_area_rai": 188102,
+  "flood_area_km2": 938.78,
+  "flood_area_rai": 586736,
   "latest_observation": "2026-08-28T22:53:12Z",
-  "oldest_observation": "2026-08-27T11:35:24Z",
-  "pixel_size_m": 20
+  "oldest_observation": "2026-08-22T11:25:34Z",
+  "pixel_size_m": 20,
+  "min_polygon_ha": 2,
+  "note": "polygons under 2 ha dropped; area is of published polygons"
 }

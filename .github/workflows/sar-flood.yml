@@ -5,17 +5,21 @@ name: Observed flood extent (Sentinel-1)
 # them to Thailand and publishes a small GeoJSON the webapp overlays as
 # its own layer.
 #
-# Cadence: Sentinel-1 revisits a given place every 1-3 days and GFM
-# publishes ~5 h after acquisition, so polling every 6 hours is plenty —
-# 4 runs/day, each a few minutes, well inside the free Actions minutes.
+# Window: 7 days. One Sentinel-1 pass only covers a strip, so a short
+# window leaves most of the country unobserved; a week of passes gives
+# full national coverage, and the compositing step keeps the most recent
+# observation wherever passes overlap.
+#
+# Cadence: every 12 h. A full week is ~210 tiles and takes ~20 minutes,
+# so twice a day keeps the picture fresh without burning Actions minutes.
 on:
   schedule:
-    - cron: "20 */6 * * *"
+    - cron: "20 */12 * * *"
   workflow_dispatch:
     inputs:
       hours:
         description: "Look-back window in hours"
-        default: "48"
+        default: "168"
 
 concurrency:
   group: sar-flood
@@ -24,7 +28,7 @@ concurrency:
 jobs:
   detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: write
     steps:
@@ -51,7 +55,7 @@ jobs:
           # rasterio reads the COGs over HTTP; keep GDAL from listing dirs.
           GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
           CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif"
-        run: python scripts/14_sar_flood.py --hours ${{ github.event.inputs.hours || '48' }}
+        run: python scripts/14_sar_flood.py --hours ${{ github.event.inputs.hours || '168' }}
 
       - name: Commit if changed
         run: |

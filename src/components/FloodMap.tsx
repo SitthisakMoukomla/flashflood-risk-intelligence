@@ -1108,7 +1108,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         const obs = (feature.properties as { observed_at?: string | null })?.observed_at;
         layer.bindTooltip(
           `<b>น้ำท่วมตรวจพบ</b><br/>Sentinel-1 · Copernicus GFM` +
-            (obs ? `<br/><span style="opacity:.7">ถ่ายภาพ ${formatTimeBKK(obs)}</span>` : ""),
+            (obs
+              ? `<br/>ถ่ายภาพ <b>${new Date(obs).toLocaleDateString("th-TH", {
+                  day: "numeric",
+                  month: "short",
+                  timeZone: "Asia/Bangkok",
+                })} ${formatTimeBKK(obs)}</b>`
+              : ""),
           { sticky: true, opacity: 0.95, direction: "top" },
         );
       },
@@ -1569,11 +1575,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             label="น้ำท่วมตรวจพบ (ดาวเทียม)"
             hint={
               sarFloodMeta
-                ? `Sentinel-1 · ${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่ · ${
-                    sarFloodMeta.latest_observation
-                      ? formatTimeBKK(sarFloodMeta.latest_observation)
-                      : "—"
-                  }`
+                ? `Sentinel-1 · รวม ${Math.round(sarFloodMeta.window_hours / 24)} วัน · ` +
+                  `${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่`
                 : "ไม่มีข้อมูล"
             }
             icon={<Satellite size={18} strokeWidth={2} />}

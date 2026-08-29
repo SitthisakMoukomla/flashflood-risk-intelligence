@@ -15,14 +15,21 @@ The GFM ensemble raster is uint8 in an Equi7Grid projection:
   1   = flooded
   255 = no observation / outside the swath
 
+A single Sentinel-1 pass only covers a strip, so a short window leaves most
+of the country unobserved. The default window is therefore a week: every
+pass in the last 7 days is composited, and where the same ground is seen
+more than once only the most recent observation is kept (so a receding
+flood is not double-drawn against its own earlier extent).
+
 Run:
-  uv run python scripts/14_sar_flood.py                  # last 48 h
-  uv run python scripts/14_sar_flood.py --hours 72 --min-poly-px 15
+  uv run python scripts/14_sar_flood.py                  # last 7 days
+  uv run python scripts/14_sar_flood.py --hours 48 --max-tiles 60
 """
 
 from __future__ import annotations
 
 import json
+import math
 import ssl
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -35,6 +42,7 @@ from rasterio.features import shapes as rio_shapes
 from rasterio.warp import transform_geom
 from shapely.geometry import mapping, shape
 from shapely.prepared import prep
+from shapely.strtree import STRtree
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DATA = REPO_ROOT.parent / "public" / "data"
@@ -166,22 +174,22 @@ def tile_flood_polygons(
 
 
 @click.command()
-@click.option("--hours", default=48, type=int, help="Look-back window in hours")
+@click.option("--hours", default=168, type=int, help="Look-back window in hours (default 7 days)")
 @click.option(
     "--min-pixels",
     default=25,
     type=int,
     help="Skip tiles with fewer flooded pixels than this (speckle guard)",
 )
-@click.option("--max-tiles", default=60, type=int, help="Safety cap on tiles downloaded")
+@click.option("--max-tiles", default=320, type=int, help="Safety cap on tiles downloaded")
 @click.option(
     "--min-poly-px",
-    default=25,
+    default=50,
     type=int,
-    help="Drop flood blobs smaller than this many connected pixels (UN-SPIDER uses 8)",
+    help="Drop flood blobs smaller than this many connected 20 m pixels (50 = 2 ha)",
 )
 @click.option(
-    "--simplify-m", default=40.0, type=float, help="Polygon simplify tolerance in metres"
+    "--simplify-m", default=60.0, type=float, help="Polygon simplify tolerance in metres"
 )
 def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify_m: float) -> None:
     items = stac_search(hours)
@@ -235,9 +243,50 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
             f"{len(geoms)} polygon(s) in TH ({area_m2 / 1e6:.1f} km²)"
         )
 
-    # 1 rai = 1600 m².
-    area_km2 = total_area_m2 / 1e6
-    area_rai = total_area_m2 / 1600
+    # Report the area of the polygons actually published (post-composite),
+    # not the raw pixel count of everything downloaded.
+    published_m2 = 0.0
+    for f in features:
+        g = shape(f["geometry"])
+        published_m2 += g.area * (111_320.0**2) * math.cos(math.radians(g.centroid.y))
+    area_km2 = published_m2 / 1e6
+    area_rai = published_m2 / 1600
+    click.echo(
+        f"[area] downloaded {total_area_m2 / 1e6:.0f} km² of raw flood pixels → "
+        f"{area_km2:.0f} km² published after compositing"
+    )
+
+    # Composite: newest first, drop a polygon whose ground is already
+    # covered by a more recent pass. Same flood seen twice in a week should
+    # read as one area at its latest observed extent, not as two.
+    if features:
+        before = len(features)
+        features.sort(key=lambda f: f["properties"]["observed_at"] or "", reverse=True)
+        kept: list[dict] = []
+        kept_geoms: list[object] = []
+        tree: STRtree | None = None
+        rebuild_at = 0
+        for f in features:
+            g = shape(f["geometry"])
+            if not g.is_valid:
+                g = g.buffer(0)
+            if kept_geoms:
+                if tree is None or len(kept_geoms) >= rebuild_at:
+                    tree = STRtree(kept_geoms)
+                    rebuild_at = len(kept_geoms) + 200
+                covered = 0.0
+                for idx in tree.query(g):
+                    inter = g.intersection(kept_geoms[idx])
+                    if not inter.is_empty:
+                        covered += inter.area
+                    if covered >= g.area * 0.6:
+                        break
+                if g.area > 0 and covered >= g.area * 0.6:
+                    continue
+            kept.append(f)
+            kept_geoms.append(g)
+        features = kept
+        click.echo(f"[composite] {before} → {len(features)} polygon(s) after de-overlapping passes")
 
     # A capped run that found nothing is a partial view, not evidence that the
     # flooding is over — never let it wipe a good file.
@@ -257,6 +306,7 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "source": "Copernicus EMS Global Flood Monitoring (Sentinel-1), via EODC STAC",
                 "window_hours": hours,
+                "composite": "latest observation wins where passes overlap",
                 "tiles_seen": len(items),
                 "tiles_with_flood": tiles_with_flood,
                 "polygons": len(features),

@@ -53,9 +53,18 @@ Pilot outputs use `_pilot` suffix and are independent of full-AOI outputs.
 `scripts/14_sar_flood.py` pulls Copernicus EMS **Global Flood Monitoring**
 tiles (Sentinel-1 change detection, run operationally by CEMS) from EODC's
 open STAC API — no account, no key — clips them to Thailand and writes
-`public/data/sar_flood.geojson` + `_meta.json` for the webapp's
-"น้ำท่วมตรวจพบ (ดาวเทียม)" layer. Automated by
-`.github/workflows/sar-flood.yml` every 6 hours.
+`public/data/sar_flood.pmtiles` (+ `.geojson` for analysis and
+`_meta.json`) for the webapp's "น้ำท่วมตรวจพบ (ดาวเทียม)" layer.
+Automated by `.github/workflows/sar-flood.yml` every 12 hours.
+
+The layer is a **raster tile pyramid (z6-z12, ~36 m at the finest)**, not
+vectors: simplifying 20 m polygons enough to ship left faceted outlines,
+and one nationwide PNG had to be coarse enough to decode (220 m), which
+drew every flood as a block bigger than itself. PMTiles keeps the pyramid
+in one file — one binary delta per cron run instead of thousands of
+churning tile files — and the browser fetches only the tiles on screen by
+HTTP range request. Alpha carries the fraction of each cell under water,
+so sparse flooding reads faint rather than solid.
 
 Speckle handling follows the UN-SPIDER recipe: blobs under 25 connected
 20 m pixels (1 ha) are dropped, edges simplified 40 m. The Thailand outline

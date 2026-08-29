@@ -6,13 +6,16 @@
     "dev": "next dev --turbopack -p 3030",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preflight": "node scripts/preflight.mjs",
+    "deploy": "npm run preflight && vercel build --prod && vercel deploy --prebuilt --prod --yes"
   },
   "dependencies": {
     "h3-js": "^4.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "next": "latest",
+    "pmtiles": "^4.5.0",
     "react": "latest",
     "react-dom": "latest"
   },

@@ -823,8 +823,9 @@ a { color: inherit; }
   .ff-flood-beacon .ring { animation: none; opacity: 0.7; }
 }
 
-/* Observed-flood raster: nearest-neighbour keeps the 220 m cells crisp
-   instead of smearing them into a blur when the map zooms past native. */
+/* Observed-flood tiles: nearest-neighbour past the pyramid's native zoom,
+   so cells stay honest squares rather than blurring into false gradients. */
+.ff-sar-flood img,
 .ff-sar-flood {
   image-rendering: pixelated;
 }

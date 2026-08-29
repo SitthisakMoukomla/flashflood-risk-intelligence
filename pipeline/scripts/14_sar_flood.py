@@ -7,13 +7,15 @@ tiles intersecting Thailand for the last N hours, keeps only the ones that
 actually contain flood pixels, and writes a small GeoJSON the webapp can
 overlay as its own layer:
 
-  public/data/sar_flood.png           — flood mask as an RGBA overlay
+  public/data/sar_flood.pmtiles       — z6-z12 raster tile pyramid (drawn)
   public/data/sar_flood.geojson       — same extent as polygons (analysis)
   public/data/sar_flood_meta.json     — coverage summary for the UI
 
-The webapp draws the PNG, not the polygons: vectorising 20 m pixels and
-simplifying them to keep the payload sane left visibly faceted edges, and
-the raster has none while being an order of magnitude smaller.
+The webapp draws the tiles, not the polygons. Vectorising a 20 m mask and
+simplifying it enough to ship left visibly faceted outlines; a single
+nationwide PNG traded that for 220 m blocks bigger than the floods they
+described. A pyramid keeps ~36 m detail where the map is zoomed in while
+the client only ever fetches the handful of tiles on screen.
 
 The GFM ensemble raster is uint8 in an Equi7Grid projection:
   0   = not flooded (observed)
@@ -73,13 +75,22 @@ JRC_CACHE = REPO_ROOT / "data" / "jrc" / "seasonality_thailand.tif"
 # flood mask *before* vectorising — masking whole polygons instead would
 # leave the river inside a large polygon untouched.
 WATER_MONTHS = 6
-# Overlay grid. 0.002° ≈ 220 m: coarse enough that the whole country is a
-# 32 MP mask the browser can decode without strain, fine enough that the
-# 2 ha floor above still occupies a pixel.
-RASTER_RES_DEG = 0.002
-# Cyan, matching the layer's colour in the UI.
+# Web Mercator tile pyramid. A single nationwide PNG forces one resolution
+# on every zoom: coarse enough to decode (220 m) turned every flood into a
+# block far bigger than itself. Tiles let the fine detail exist without the
+# client ever holding the whole country in memory.
+#   z12 ≈ 36 m/px at Thailand's latitude — close to the 20 m source.
+#   z6  ≈ 2.3 km/px — the whole country in a handful of tiles.
+TILE_MAX_Z = 12
+TILE_MIN_Z = 6
+TILE_PX = 256
+# Cyan, matching the layer's colour in the UI. Alpha carries how much of
+# the cell is actually under water, so sparse flooding reads faint instead
+# of pretending to fill the cell.
 RASTER_RGB = (34, 211, 238)
-RASTER_ALPHA = 165
+TILE_ALPHA_MAX = 210
+TILE_ALPHA_MIN = 70  # any flood at all stays visible when zoomed out
+WEB_MERCATOR_HALF = 20037508.342789244
 JRC_RES_DEG = 0.001  # ~110 m — fine enough to cut a river out of a 20 m mask
 UA = "flashflood-risk-intelligence (github.com/SitthisakMoukomla)"
 
@@ -208,25 +219,193 @@ def load_thailand() -> object:
     return prep(geom)
 
 
-def accumulate_mask(
-    flooded: np.ndarray, ds, acc: np.ndarray, acc_transform
-) -> None:
-    """Burn one tile's flood mask into the nationwide overlay grid."""
-    from rasterio.warp import Resampling, reproject
+def zxy_to_tileid(z: int, x: int, y: int) -> int:
+    """PMTiles tile id (Hilbert curve order); inverse of tileid_to_zxy."""
+    acc = 0
+    for tz in range(z):
+        acc += (1 << tz) * (1 << tz)
+    n = 1 << z
+    d = 0
+    tx, ty = x, y
+    s = n >> 1
+    while s > 0:
+        rx = 1 if (tx & s) > 0 else 0
+        ry = 1 if (ty & s) > 0 else 0
+        d += s * s * ((3 * rx) ^ ry)
+        if ry == 0:
+            if rx == 1:
+                tx = s - 1 - tx
+                ty = s - 1 - ty
+            tx, ty = ty, tx
+        s >>= 1
+    return acc + d
 
-    patch = np.zeros(acc.shape, dtype="uint8")
+
+def lonlat_to_tile(lon: float, lat: float, z: int) -> tuple[int, int]:
+    n = 1 << z
+    x = int((lon + 180.0) / 360.0 * n)
+    lat_r = math.radians(max(-85.05112878, min(85.05112878, lat)))
+    y = int((1.0 - math.log(math.tan(lat_r) + 1 / math.cos(lat_r)) / math.pi) / 2.0 * n)
+    return max(0, min(n - 1, x)), max(0, min(n - 1, y))
+
+
+def tile_block_transform(x0: int, y0: int, z: int):
+    """Affine transform (EPSG:3857) for a block of tiles starting at x0,y0."""
+    from rasterio.transform import from_origin
+
+    span = 2 * WEB_MERCATOR_HALF / (1 << z)
+    res = span / TILE_PX
+    return from_origin(-WEB_MERCATOR_HALF + x0 * span, WEB_MERCATOR_HALF - y0 * span, res, res)
+
+
+def accumulate_tiles(flooded: np.ndarray, ds, tiles: dict[tuple[int, int], np.ndarray]) -> None:
+    """Reproject one GFM tile's mask into the z12 tiles it covers.
+
+    Coverage, not presence: the mask is scaled to 0-255 and averaged, so a
+    cell only half under water ends up half-strength rather than solid."""
+    from rasterio.transform import array_bounds
+    from rasterio.warp import Resampling, reproject, transform_bounds
+    from rasterio.windows import Window
+    from rasterio.windows import transform as window_transform
+
+    # Flooding occupies a small part of a 15000x15000 tile. Reprojecting the
+    # whole thing cost ~40 s per tile; cropping to the flooded extent first
+    # cuts that to a few seconds without changing the result.
+    ys, xs = np.nonzero(flooded)
+    if ys.size == 0:
+        return
+    r0, r1 = int(ys.min()), int(ys.max()) + 1
+    c0, c1 = int(xs.min()), int(xs.max()) + 1
+    sub = flooded[r0:r1, c0:c1]
+    sub_tr = window_transform(Window(c0, r0, c1 - c0, r1 - r0), ds.transform)
+    sub_bounds = array_bounds(r1 - r0, c1 - c0, sub_tr)
+
+    w, s_, e, n = transform_bounds(ds.crs, "EPSG:4326", *sub_bounds, densify_pts=21)
+    x0, y0 = lonlat_to_tile(w, n, TILE_MAX_Z)  # north-west corner
+    x1, y1 = lonlat_to_tile(e, s_, TILE_MAX_Z)  # south-east corner
+    nx, ny = x1 - x0 + 1, y1 - y0 + 1
+    if nx <= 0 or ny <= 0 or nx * ny > 4096:  # sanity guard on absurd extents
+        return
+    dst = np.zeros((ny * TILE_PX, nx * TILE_PX), dtype="uint8")
     reproject(
-        source=flooded.astype("uint8"),
-        destination=patch,
-        src_transform=ds.transform,
+        source=(sub.astype("uint8") * 255),
+        destination=dst,
+        src_transform=sub_tr,
         src_crs=ds.crs,
-        dst_transform=acc_transform,
-        dst_crs="EPSG:4326",
-        resampling=Resampling.max,  # keep a flooded pixel visible when downsampling
+        dst_transform=tile_block_transform(x0, y0, TILE_MAX_Z),
+        dst_crs="EPSG:3857",
+        resampling=Resampling.average,
         src_nodata=0,
         dst_nodata=0,
     )
-    np.maximum(acc, patch, out=acc)
+    for ty in range(ny):
+        rows = dst[ty * TILE_PX : (ty + 1) * TILE_PX]
+        if not rows.any():
+            continue
+        for tx in range(nx):
+            cell = rows[:, tx * TILE_PX : (tx + 1) * TILE_PX]
+            if not cell.any():
+                continue
+            key = (x0 + tx, y0 + ty)
+            prev = tiles.get(key)
+            tiles[key] = cell.copy() if prev is None else np.maximum(prev, cell)
+
+
+def build_pyramid(
+    finest: dict[tuple[int, int], np.ndarray],
+) -> dict[int, dict[tuple[int, int], np.ndarray]]:
+    """Fold the finest zoom upwards by 2x2 area averaging."""
+    levels: dict[int, dict[tuple[int, int], np.ndarray]] = {TILE_MAX_Z: finest}
+    for z in range(TILE_MAX_Z - 1, TILE_MIN_Z - 1, -1):
+        child = levels[z + 1]
+        parent: dict[tuple[int, int], np.ndarray] = {}
+        for (cx, cy), arr in child.items():
+            px, py = cx >> 1, cy >> 1
+            buf = parent.get((px, py))
+            if buf is None:
+                buf = np.zeros((TILE_PX, TILE_PX), dtype="uint8")
+                parent[(px, py)] = buf
+            # Each child occupies one quadrant of the parent, halved in size.
+            small = (
+                arr.reshape(TILE_PX // 2, 2, TILE_PX // 2, 2).mean(axis=(1, 3))
+            ).astype("uint8")
+            oy = (cy & 1) * (TILE_PX // 2)
+            ox = (cx & 1) * (TILE_PX // 2)
+            np.maximum(
+                buf[oy : oy + TILE_PX // 2, ox : ox + TILE_PX // 2],
+                small,
+                out=buf[oy : oy + TILE_PX // 2, ox : ox + TILE_PX // 2],
+            )
+        levels[z] = parent
+    return levels
+
+
+def encode_tile_png(coverage: np.ndarray) -> bytes:
+    """Coverage 0-255 → cyan RGBA PNG bytes."""
+    import io
+
+    from PIL import Image
+
+    rgba = np.zeros((TILE_PX, TILE_PX, 4), dtype="uint8")
+    hit = coverage > 0
+    rgba[..., 0][hit] = RASTER_RGB[0]
+    rgba[..., 1][hit] = RASTER_RGB[1]
+    rgba[..., 2][hit] = RASTER_RGB[2]
+    alpha = np.zeros_like(coverage, dtype="float32")
+    alpha[hit] = TILE_ALPHA_MIN + coverage[hit].astype("float32") / 255.0 * (
+        TILE_ALPHA_MAX - TILE_ALPHA_MIN
+    )
+    rgba[..., 3] = np.clip(alpha, 0, 255).astype("uint8")
+    buf = io.BytesIO()
+    Image.fromarray(rgba, "RGBA").save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
+
+
+def write_pmtiles(
+    levels: dict[int, dict[tuple[int, int], np.ndarray]],
+    out_path: Path,
+    bounds: tuple[float, float, float, float],
+) -> tuple[int, int]:
+    """Pack the pyramid into one PMTiles archive.
+
+    One file rather than thousands keeps the repo sane across twice-daily
+    cron runs, and the client still fetches only the tiles it displays via
+    HTTP range requests."""
+    from pmtiles.tile import Compression, TileType
+    from pmtiles.writer import Writer
+
+    entries: list[tuple[int, bytes]] = []
+    for z in sorted(levels):
+        for (x, y), cov in levels[z].items():
+            entries.append((zxy_to_tileid(z, x, y), encode_tile_png(cov)))
+    entries.sort(key=lambda t: t[0])
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    w, s_, e, n = bounds
+    with open(out_path, "wb") as f:
+        writer = Writer(f)
+        for tid, data in entries:
+            writer.write_tile(tid, data)
+        writer.finalize(
+            {
+                "tile_type": TileType.PNG,
+                "tile_compression": Compression.NONE,
+                "min_zoom": TILE_MIN_Z,
+                "max_zoom": TILE_MAX_Z,
+                "min_lon_e7": int(w * 1e7),
+                "min_lat_e7": int(s_ * 1e7),
+                "max_lon_e7": int(e * 1e7),
+                "max_lat_e7": int(n * 1e7),
+                "center_zoom": TILE_MIN_Z,
+                "center_lon_e7": int((w + e) / 2 * 1e7),
+                "center_lat_e7": int((s_ + n) / 2 * 1e7),
+            },
+            {
+                "attribution": "Copernicus EMS Global Flood Monitoring (Sentinel-1)",
+                "name": "Observed flood extent",
+            },
+        )
+    return len(entries), out_path.stat().st_size
 
 
 def erase_water(flooded: np.ndarray, ds, water_ds) -> tuple[np.ndarray, int]:
@@ -257,8 +436,7 @@ def tile_flood_polygons(
     simplify_m: float,
     thailand,
     water_ds,
-    acc: np.ndarray | None = None,
-    acc_transform=None,
+    tiles: dict[tuple[int, int], np.ndarray] | None = None,
 ) -> tuple[list[dict], float, int, int]:
     """Flooded blobs of one GFM tile as WGS84 polygons, clipped to Thailand.
 
@@ -277,8 +455,8 @@ def tile_flood_polygons(
         flooded, water_px = erase_water(flooded, ds, water_ds)
         if int(flooded.sum()) < min_pixels:
             return [], 0.0, raw_count, water_px
-        if acc is not None:
-            accumulate_mask(flooded, ds, acc, acc_transform)
+        if tiles is not None:
+            accumulate_tiles(flooded, ds, tiles)
         mask = flooded.astype(np.uint8)
         min_area = min_poly_px * px_area
         geoms: list[dict] = []
@@ -336,14 +514,9 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
     country_bounds = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
     _, _, water_ds = load_water_reference(country_bounds)
 
-    from rasterio.transform import from_origin
-
     rw, rs, re_, rn = country_bounds
-    acc_w = int(math.ceil((re_ - rw) / RASTER_RES_DEG))
-    acc_h = int(math.ceil((rn - rs) / RASTER_RES_DEG))
-    acc = np.zeros((acc_h, acc_w), dtype="uint8")
-    acc_transform = from_origin(rw, rn, RASTER_RES_DEG, RASTER_RES_DEG)
-    click.echo(f"[raster] overlay grid {acc_w}x{acc_h} @ {RASTER_RES_DEG}°")
+    tiles: dict[tuple[int, int], np.ndarray] = {}
+    click.echo(f"[tiles] accumulating z{TILE_MAX_Z} tiles (~36 m/px)")
     total_water_px = 0
     features: list[dict] = []
     total_area_m2 = 0.0
@@ -359,7 +532,7 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         try:
             geoms, area_m2, raw_px, water_px = tile_flood_polygons(
                 asset["href"], min_pixels, min_poly_px, simplify_m, thailand,
-                water_ds, acc, acc_transform,
+                water_ds, tiles,
             )
             total_water_px += water_px
         except Exception as e:  # a single bad tile must not kill the run
@@ -437,6 +610,19 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         click.echo("[skip] capped run produced no polygons — keeping the existing file")
         return
 
+    # Tile pyramid — what the webapp actually draws.
+    pm_out = PUBLIC_DATA / "sar_flood.pmtiles"
+    tile_count = 0
+    pm_bytes = 0
+    if tiles:
+        levels = build_pyramid(tiles)
+        per_level = ", ".join(f"z{z}:{len(levels[z])}" for z in sorted(levels))
+        click.echo(f"[tiles] {per_level}")
+        tile_count, pm_bytes = write_pmtiles(levels, pm_out, (rw, rs, re_, rn))
+        click.echo(f"[tiles] {pm_out.name} {tile_count:,} tiles, {pm_bytes / 1024:.0f} KB")
+    else:
+        click.echo("[tiles] no flooded tiles — archive not written")
+
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
     geo_out = PUBLIC_DATA / "sar_flood.geojson"
     meta_out = PUBLIC_DATA / "sar_flood_meta.json"
@@ -464,42 +650,19 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "latest_observation": latest_obs,
                 "oldest_observation": oldest_obs,
                 "pixel_size_m": 20,
-                "raster": {
-                    "file": "sar_flood.png",
-                    "bbox": [
-                        rw,
-                        rn - acc_h * RASTER_RES_DEG,
-                        rw + acc_w * RASTER_RES_DEG,
-                        rn,
-                    ],
-                    "width": acc_w,
-                    "height": acc_h,
-                    "res_deg": RASTER_RES_DEG,
+                "tiles": {
+                    "file": "sar_flood.pmtiles",
+                    "min_zoom": TILE_MIN_Z,
+                    "max_zoom": TILE_MAX_Z,
+                    "count": tile_count,
+                    "bytes": pm_bytes,
+                    "bbox": [rw, rs, re_, rn],
                 },
             },
             indent=2,
             ensure_ascii=False,
         )
     )
-    # Overlay PNG — what the webapp actually draws.
-    png_out = PUBLIC_DATA / "sar_flood.png"
-    rgba = np.zeros((acc.shape[0], acc.shape[1], 4), dtype="uint8")
-    hit = acc > 0
-    rgba[..., 0][hit] = RASTER_RGB[0]
-    rgba[..., 1][hit] = RASTER_RGB[1]
-    rgba[..., 2][hit] = RASTER_RGB[2]
-    rgba[..., 3][hit] = RASTER_ALPHA
-    try:
-        from PIL import Image
-
-        Image.fromarray(rgba, "RGBA").save(png_out, optimize=True)
-        click.echo(
-            f"[raster] {png_out.name} {acc.shape[1]}x{acc.shape[0]} "
-            f"{png_out.stat().st_size / 1024:.0f} KB, {int(hit.sum()):,} lit pixels"
-        )
-    except ImportError:
-        click.echo("[raster] Pillow missing — PNG not written", err=True)
-
     size_kb = geo_out.stat().st_size / 1024
     click.echo(
         f"[write] {geo_out.name} {len(features)} polygon(s), {size_kb:.1f} KB — "

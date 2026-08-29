@@ -2,8 +2,9 @@ name: Observed flood extent (Sentinel-1)
 
 # Pulls Copernicus EMS Global Flood Monitoring tiles (Sentinel-1 change
 # detection, run operationally by CEMS) from EODC's open STAC API, clips
-# them to Thailand and publishes a small GeoJSON the webapp overlays as
-# its own layer.
+# them to Thailand and publishes a raster tile pyramid (PMTiles) the
+# webapp overlays as its own layer, plus the same extent as polygons for
+# offline analysis.
 #
 # Window: 7 days. One Sentinel-1 pass only covers a strip, so a short
 # window leaves most of the country unobserved; a week of passes gives
@@ -38,6 +39,7 @@ jobs:
           sparse-checkout: |
             pipeline/scripts/14_sar_flood.py
             pipeline/data/aoi/gadm41_THA_3.json.zip
+            public/data/sar_flood.pmtiles
             public/data/sar_flood.geojson
             public/data/sar_flood_meta.json
           sparse-checkout-cone-mode: false
@@ -47,9 +49,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install deps
-        run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi
+        run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi pillow pmtiles
 
-      - name: Fetch GFM tiles and build flood polygons
+      - name: Fetch GFM tiles and build the flood tile pyramid
         working-directory: pipeline
         env:
           # rasterio reads the COGs over HTTP; keep GDAL from listing dirs.
@@ -61,7 +63,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/data/sar_flood.geojson public/data/sar_flood_meta.json
+          git add public/data/sar_flood.pmtiles public/data/sar_flood.geojson public/data/sar_flood_meta.json
           if git diff --cached --quiet; then
             echo "no change in observed flood extent — nothing to commit"
             exit 0

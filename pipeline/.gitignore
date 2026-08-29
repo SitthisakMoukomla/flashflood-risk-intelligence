@@ -27,3 +27,6 @@ data/gee_exports/
 
 # Derived, rebuilt by 14_sar_flood.py on demand
 data/aoi/thailand_boundary.geojson
+data/jrc/
+data/hydrosheds/
+data/dem90/

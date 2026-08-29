@@ -529,7 +529,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [methodOpen, setMethodOpen] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(7);
+  const [zoom, setZoom] = useState(6);
 
   // 1) Data load
   useEffect(() => {
@@ -829,8 +829,10 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       if (cancelled) return;
       leafletRef.current = L;
       const map = L.map(mapElementRef.current, {
-        center: [18.7, 99.8],
-        zoom: 7,
+        // Centre of the country, not of the northern AOI: stations and the
+        // observed-flood layer are nationwide now.
+        center: [13.2, 101.4],
+        zoom: 6,
         zoomControl: false,
         preferCanvas: true,
       });

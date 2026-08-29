@@ -55,6 +55,17 @@ FLOOD_ASSET = "ensemble_flood_extent"
 # reported area is Thailand's, not the region's.
 BOUNDARY_PATH = REPO_ROOT / "data" / "aoi" / "thailand_boundary.geojson"
 GADM_ZIP = REPO_ROOT / "data" / "aoi" / "gadm41_THA_3.json.zip"
+
+# JRC Global Surface Water (v1.4, 2021) seasonality: months per year a
+# pixel holds water, 0-12. Open data, no account.
+JRC_BASE = "https://storage.googleapis.com/global-surface-water/downloads2021/seasonality"
+JRC_CACHE = REPO_ROOT / "data" / "jrc" / "seasonality_thailand.tif"
+# GFM already removes permanent water. What it keeps includes ground that
+# is under water most years anyway — river bends, reservoir margins, wet
+# paddy — and calling that "flood" is misleading. Drop a polygon when most
+# of it sits on ground that normally holds water this much of the year.
+SEASONAL_MONTHS = 9
+SEASONAL_MAX_FRACTION = 0.6
 UA = "flashflood-risk-intelligence (github.com/SitthisakMoukomla)"
 
 try:  # certifi is present via rasterio's deps; fall back to system store.
@@ -125,6 +136,54 @@ def build_boundary() -> None:
         )
     )
     click.echo(f"[boundary] built {BOUNDARY_PATH.name} from {len(fc['features'])} tambon")
+
+
+def build_water_reference(bounds: tuple[float, float, float, float]) -> None:
+    """Mosaic the JRC seasonality tiles covering Thailand into one cached
+    raster, decimated to ~200 m — enough to tell a river bend from a
+    flooded field, small enough to hold in memory."""
+    from rasterio.merge import merge as rio_merge
+
+    w, s_, e, n = bounds
+    parts = []
+    for lon in range(int(math.floor(w / 10) * 10), int(math.ceil(e / 10) * 10), 10):
+        for lat in range(int(math.ceil(s_ / 10) * 10), int(math.ceil(n / 10) * 10) + 10, 10):
+            name = f"seasonality_{abs(lon)}{'E' if lon >= 0 else 'W'}_{abs(lat)}{'N' if lat >= 0 else 'S'}v1_4_2021.tif"
+            url = f"/vsicurl/{JRC_BASE}/{name}"
+            try:
+                ds = rasterio.open(url)
+            except Exception:
+                continue
+            parts.append(ds)
+    if not parts:
+        raise SystemExit("could not open any JRC seasonality tile")
+    click.echo(f"[water] mosaicking {len(parts)} JRC tile(s) at ~200 m")
+    mosaic, transform = rio_merge(parts, bounds=(w, s_, e, n), res=0.002)
+    for ds in parts:
+        ds.close()
+    JRC_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(
+        JRC_CACHE,
+        "w",
+        driver="GTiff",
+        height=mosaic.shape[1],
+        width=mosaic.shape[2],
+        count=1,
+        dtype=mosaic.dtype,
+        crs="EPSG:4326",
+        transform=transform,
+        compress="lzw",
+        tiled=True,
+    ) as dst:
+        dst.write(mosaic[0], 1)
+    click.echo(f"[water] cached {JRC_CACHE.name} {mosaic.shape[2]}x{mosaic.shape[1]}")
+
+
+def load_water_reference(bounds: tuple[float, float, float, float]):
+    if not JRC_CACHE.exists():
+        build_water_reference(bounds)
+    ds = rasterio.open(JRC_CACHE)
+    return ds.read(1), ds.transform, ds
 
 
 def load_thailand() -> object:
@@ -288,6 +347,48 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         features = kept
         click.echo(f"[composite] {before} → {len(features)} polygon(s) after de-overlapping passes")
 
+    # Drop polygons that sit on ground which normally holds water anyway.
+    if features:
+        from rasterio.features import geometry_mask
+        from rasterio.windows import from_bounds as win_from_bounds
+
+        b = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
+        water, water_tr, water_ds = load_water_reference(b)
+        before = len(features)
+        kept2: list[dict] = []
+        dropped_area = 0.0
+        for f in features:
+            g = shape(f["geometry"])
+            try:
+                win = win_from_bounds(*g.bounds, transform=water_tr)
+                r0, r1 = int(max(0, win.row_off)), int(min(water.shape[0], win.row_off + win.height + 1))
+                c0, c1 = int(max(0, win.col_off)), int(min(water.shape[1], win.col_off + win.width + 1))
+                sub = water[r0:r1, c0:c1]
+                if sub.size == 0:
+                    kept2.append(f)
+                    continue
+                sub_tr = rasterio.windows.transform(
+                    rasterio.windows.Window(c0, r0, c1 - c0, r1 - r0), water_tr
+                )
+                m = geometry_mask([g], out_shape=sub.shape, transform=sub_tr, invert=True)
+                vals = sub[m]
+                if vals.size == 0:
+                    # Polygon smaller than a 200 m cell — judge by its centre.
+                    vals = sub[(sub.shape[0] // 2) : (sub.shape[0] // 2) + 1, (sub.shape[1] // 2) : (sub.shape[1] // 2) + 1].ravel()
+                if vals.size and (vals >= SEASONAL_MONTHS).mean() >= SEASONAL_MAX_FRACTION:
+                    dropped_area += g.area * (111_320.0**2) * math.cos(math.radians(g.centroid.y))
+                    continue
+            except Exception:
+                pass  # a polygon we cannot judge stays in
+            kept2.append(f)
+        water_ds.close()
+        features = kept2
+        click.echo(
+            f"[water] {before} → {len(features)} polygon(s) after dropping ground that "
+            f"normally holds water ≥{SEASONAL_MONTHS} months/yr "
+            f"({dropped_area / 1e6:.0f} km² removed)"
+        )
+
     # A capped run that found nothing is a partial view, not evidence that the
     # flooding is over — never let it wipe a good file.
     if capped and not features and (PUBLIC_DATA / "sar_flood.geojson").exists():
@@ -311,6 +412,10 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "tiles_with_flood": tiles_with_flood,
                 "polygons": len(features),
                 "clipped_to": "Thailand (GADM 4.1 level-3 dissolved)",
+                "water_filter": (
+                    f"dropped polygons ≥{int(SEASONAL_MAX_FRACTION * 100)}% covered by JRC GSW "
+                    f"seasonality ≥{SEASONAL_MONTHS} months/yr"
+                ),
                 "flood_area_km2": round(area_km2, 2),
                 "flood_area_rai": round(area_rai),
                 "latest_observation": latest_obs,

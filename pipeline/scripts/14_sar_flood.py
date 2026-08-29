@@ -60,12 +60,15 @@ GADM_ZIP = REPO_ROOT / "data" / "aoi" / "gadm41_THA_3.json.zip"
 # pixel holds water, 0-12. Open data, no account.
 JRC_BASE = "https://storage.googleapis.com/global-surface-water/downloads2021/seasonality"
 JRC_CACHE = REPO_ROOT / "data" / "jrc" / "seasonality_thailand.tif"
-# GFM already removes permanent water. What it keeps includes ground that
-# is under water most years anyway — river bends, reservoir margins, wet
-# paddy — and calling that "flood" is misleading. Drop a polygon when most
-# of it sits on ground that normally holds water this much of the year.
-SEASONAL_MONTHS = 9
-SEASONAL_MAX_FRACTION = 0.6
+# GFM removes permanent water using its own monthly reference mask, but
+# river bends, reservoir margins and other ground that holds water most of
+# the year still come through, and drawing those as "flood" is misleading.
+# JRC seasonality counts months per year a pixel holds water; anything at
+# or above this is treated as water, not flooding, and is erased from the
+# flood mask *before* vectorising — masking whole polygons instead would
+# leave the river inside a large polygon untouched.
+WATER_MONTHS = 6
+JRC_RES_DEG = 0.001  # ~110 m — fine enough to cut a river out of a 20 m mask
 UA = "flashflood-risk-intelligence (github.com/SitthisakMoukomla)"
 
 try:  # certifi is present via rasterio's deps; fall back to system store.
@@ -157,8 +160,8 @@ def build_water_reference(bounds: tuple[float, float, float, float]) -> None:
             parts.append(ds)
     if not parts:
         raise SystemExit("could not open any JRC seasonality tile")
-    click.echo(f"[water] mosaicking {len(parts)} JRC tile(s) at ~200 m")
-    mosaic, transform = rio_merge(parts, bounds=(w, s_, e, n), res=0.002)
+    click.echo(f"[water] mosaicking {len(parts)} JRC tile(s) at ~{JRC_RES_DEG * 111000:.0f} m")
+    mosaic, transform = rio_merge(parts, bounds=(w, s_, e, n), res=JRC_RES_DEG)
     for ds in parts:
         ds.close()
     JRC_CACHE.parent.mkdir(parents=True, exist_ok=True)
@@ -193,9 +196,30 @@ def load_thailand() -> object:
     return prep(geom)
 
 
+def erase_water(flooded: np.ndarray, ds, water_ds) -> tuple[np.ndarray, int]:
+    """Remove pixels that normally hold water from a tile's flood mask."""
+    from rasterio.warp import Resampling, reproject
+
+    water_on_tile = np.zeros(flooded.shape, dtype="uint8")
+    reproject(
+        source=rasterio.band(water_ds, 1),
+        destination=water_on_tile,
+        src_transform=water_ds.transform,
+        src_crs=water_ds.crs,
+        dst_transform=ds.transform,
+        dst_crs=ds.crs,
+        resampling=Resampling.max,  # keep water if any sub-pixel is water
+        src_nodata=255,
+        dst_nodata=0,
+    )
+    is_water = (water_on_tile >= WATER_MONTHS) & (water_on_tile <= 12)
+    removed = int((flooded & is_water).sum())
+    return flooded & ~is_water, removed
+
+
 def tile_flood_polygons(
-    href: str, min_pixels: int, min_poly_px: int, simplify_m: float, thailand
-) -> tuple[list[dict], float, int]:
+    href: str, min_pixels: int, min_poly_px: int, simplify_m: float, thailand, water_ds
+) -> tuple[list[dict], float, int, int]:
     """Flooded blobs of one GFM tile as WGS84 polygons, clipped to Thailand.
 
     Speckle control mirrors the UN-SPIDER recipe: drop blobs smaller than
@@ -209,7 +233,10 @@ def tile_flood_polygons(
         flooded = band == 1
         raw_count = int(flooded.sum())
         if raw_count < min_pixels:
-            return [], 0.0, raw_count
+            return [], 0.0, raw_count, 0
+        flooded, water_px = erase_water(flooded, ds, water_ds)
+        if int(flooded.sum()) < min_pixels:
+            return [], 0.0, raw_count, water_px
         mask = flooded.astype(np.uint8)
         min_area = min_poly_px * px_area
         geoms: list[dict] = []
@@ -229,7 +256,7 @@ def tile_flood_polygons(
                 continue
             geoms.append(wgs)
             kept_area += area_m2
-    return geoms, kept_area, raw_count
+    return geoms, kept_area, raw_count, water_px
 
 
 @click.command()
@@ -264,6 +291,9 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         items = items[:max_tiles]
 
     thailand = load_thailand()
+    country_bounds = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
+    _, _, water_ds = load_water_reference(country_bounds)
+    total_water_px = 0
     features: list[dict] = []
     total_area_m2 = 0.0
     tiles_with_flood = 0
@@ -276,9 +306,10 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
             continue
         obs = item["properties"].get("datetime")
         try:
-            geoms, area_m2, raw_px = tile_flood_polygons(
-                asset["href"], min_pixels, min_poly_px, simplify_m, thailand
+            geoms, area_m2, raw_px, water_px = tile_flood_polygons(
+                asset["href"], min_pixels, min_poly_px, simplify_m, thailand, water_ds
             )
+            total_water_px += water_px
         except Exception as e:  # a single bad tile must not kill the run
             click.echo(f"  [{i}/{len(items)}] {item['id']}: SKIP ({type(e).__name__})")
             continue
@@ -298,8 +329,9 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 }
             )
         click.echo(
-            f"  [{i}/{len(items)}] {item['id']}: {raw_px} px in tile → "
-            f"{len(geoms)} polygon(s) in TH ({area_m2 / 1e6:.1f} km²)"
+            f"  [{i}/{len(items)}] {item['id']}: {raw_px} px in tile "
+            f"(−{water_px} on standing water) → {len(geoms)} polygon(s) in TH "
+            f"({area_m2 / 1e6:.1f} km²)"
         )
 
     # Report the area of the polygons actually published (post-composite),
@@ -347,48 +379,6 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
         features = kept
         click.echo(f"[composite] {before} → {len(features)} polygon(s) after de-overlapping passes")
 
-    # Drop polygons that sit on ground which normally holds water anyway.
-    if features:
-        from rasterio.features import geometry_mask
-        from rasterio.windows import from_bounds as win_from_bounds
-
-        b = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
-        water, water_tr, water_ds = load_water_reference(b)
-        before = len(features)
-        kept2: list[dict] = []
-        dropped_area = 0.0
-        for f in features:
-            g = shape(f["geometry"])
-            try:
-                win = win_from_bounds(*g.bounds, transform=water_tr)
-                r0, r1 = int(max(0, win.row_off)), int(min(water.shape[0], win.row_off + win.height + 1))
-                c0, c1 = int(max(0, win.col_off)), int(min(water.shape[1], win.col_off + win.width + 1))
-                sub = water[r0:r1, c0:c1]
-                if sub.size == 0:
-                    kept2.append(f)
-                    continue
-                sub_tr = rasterio.windows.transform(
-                    rasterio.windows.Window(c0, r0, c1 - c0, r1 - r0), water_tr
-                )
-                m = geometry_mask([g], out_shape=sub.shape, transform=sub_tr, invert=True)
-                vals = sub[m]
-                if vals.size == 0:
-                    # Polygon smaller than a 200 m cell — judge by its centre.
-                    vals = sub[(sub.shape[0] // 2) : (sub.shape[0] // 2) + 1, (sub.shape[1] // 2) : (sub.shape[1] // 2) + 1].ravel()
-                if vals.size and (vals >= SEASONAL_MONTHS).mean() >= SEASONAL_MAX_FRACTION:
-                    dropped_area += g.area * (111_320.0**2) * math.cos(math.radians(g.centroid.y))
-                    continue
-            except Exception:
-                pass  # a polygon we cannot judge stays in
-            kept2.append(f)
-        water_ds.close()
-        features = kept2
-        click.echo(
-            f"[water] {before} → {len(features)} polygon(s) after dropping ground that "
-            f"normally holds water ≥{SEASONAL_MONTHS} months/yr "
-            f"({dropped_area / 1e6:.0f} km² removed)"
-        )
-
     # A capped run that found nothing is a partial view, not evidence that the
     # flooding is over — never let it wipe a good file.
     if capped and not features and (PUBLIC_DATA / "sar_flood.geojson").exists():
@@ -413,9 +403,10 @@ def main(hours: int, min_pixels: int, max_tiles: int, min_poly_px: int, simplify
                 "polygons": len(features),
                 "clipped_to": "Thailand (GADM 4.1 level-3 dissolved)",
                 "water_filter": (
-                    f"dropped polygons ≥{int(SEASONAL_MAX_FRACTION * 100)}% covered by JRC GSW "
-                    f"seasonality ≥{SEASONAL_MONTHS} months/yr"
+                    f"pixels on JRC GSW seasonality ≥{WATER_MONTHS} months/yr erased "
+                    "before vectorising"
                 ),
+                "water_pixels_erased": total_water_px,
                 "flood_area_km2": round(area_km2, 2),
                 "flood_area_rai": round(area_rai),
                 "latest_observation": latest_obs,

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -42,12 +43,18 @@ from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BBOX_PATH = REPO_ROOT / "data" / "aoi" / "aoi_bbox.json"
-SUSC_PATH = REPO_ROOT / "data" / "output" / "susceptibility.tif"
+BOUNDARY_PATH = REPO_ROOT / "data" / "aoi" / "thailand_boundary.geojson"
+SUSC_NORTH = REPO_ROOT / "data" / "output" / "susceptibility.tif"
+SUSC_THAILAND = REPO_ROOT / "data" / "output" / "susceptibility_thailand.tif"
 PUBLIC_DATA = REPO_ROOT.parent / "public" / "data"
 PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
 OUT_PATH = PUBLIC_DATA / "wetness_grid.json"
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# Open-Meteo's free tier meters by location-hours, not by HTTP request, so
+# a 150-point batch spends 150 units at once. ~600 units/minute is the
+# ceiling before it starts returning 429, hence 15 s between batches.
+THROTTLE_S = 15.0
 WETNESS_NORM_CAP_MM = 80.0
 PRECIP_NOW_NORM_CAP = 5.0  # mm/hr — moderate rain → "trigger" maxed
 
@@ -117,12 +124,43 @@ def fetch_batch(lats: list[float], lons: list[float]) -> tuple[list[float], list
 
 @click.command()
 @click.option("--step", default=0.15, type=float, help="Grid step in degrees (0.1 ≈ 11 km)")
-@click.option("--batch", default=400, type=int, help="Points per Open-Meteo request")
-def main(step: float, batch: int) -> None:
-    if not BBOX_PATH.exists():
-        click.echo(f"ERROR: {BBOX_PATH} missing — run 01_aoi_mask.py first", err=True)
-        sys.exit(2)
-    bbox = json.loads(BBOX_PATH.read_text())
+@click.option("--batch", default=150, type=int, help="Points per Open-Meteo request")
+@click.option(
+    "--extent",
+    type=click.Choice(["thailand", "north"]),
+    default="thailand",
+    help="Grid coverage; 'thailand' needs susceptibility_thailand.tif",
+)
+def main(step: float, batch: int, extent: str) -> None:
+    if extent == "thailand":
+        if not BOUNDARY_PATH.exists():
+            click.echo(f"ERROR: {BOUNDARY_PATH} missing — run 14_sar_flood.py once", err=True)
+            sys.exit(2)
+        from shapely.geometry import shape
+
+        b = shape(json.loads(BOUNDARY_PATH.read_text())["geometry"]).bounds
+        bbox = {"minx": b[0], "miny": b[1], "maxx": b[2], "maxy": b[3]}
+        susc_path = SUSC_THAILAND
+    else:
+        if not BBOX_PATH.exists():
+            click.echo(f"ERROR: {BBOX_PATH} missing — run 01_aoi_mask.py first", err=True)
+            sys.exit(2)
+        bbox = json.loads(BBOX_PATH.read_text())
+        susc_path = SUSC_NORTH
+    # The susceptibility raster is a build artefact and stays out of git, so
+    # CI never has it. static_norm does not change between refreshes anyway —
+    # reuse the published values and only re-fetch the weather.
+    reuse_static = not susc_path.exists()
+    if reuse_static:
+        if not OUT_PATH.exists():
+            click.echo(
+                f"ERROR: {susc_path} missing and no published grid to reuse — "
+                "build the raster first",
+                err=True,
+            )
+            sys.exit(2)
+        click.echo(f"[susc] {susc_path.name} absent — reusing static_norm from {OUT_PATH.name}")
+    click.echo(f"[extent] {extent} — static layer {susc_path.name}")
 
     lats, lons, rows, cols = build_grid(bbox, step)
     click.echo(f"[grid] step={step}° → {rows} rows × {cols} cols = {rows*cols} points")
@@ -141,24 +179,54 @@ def main(step: float, batch: int) -> None:
     rain_7d_all: list[float] = []
     precip_now_all: list[float] = []
     batches = list(zip(list(chunked(flat_lats, batch)), list(chunked(flat_lons, batch))))
-    for blat, blon in tqdm(batches, desc="open-meteo"):
-        try:
-            r7, pn = fetch_batch(blat, blon)
-        except Exception as e:
-            click.echo(f"  ! batch failed: {e}", err=True)
-            r7 = [0.0] * len(blat)
-            pn = [0.0] * len(blat)
+    failed = 0
+    for i, (blat, blon) in enumerate(tqdm(batches, desc="open-meteo")):
+        # Open-Meteo throttles a nationwide grid partway through, and a
+        # silently-zeroed batch is worse than a slow one: it reads as "no
+        # rain here" on the map. Pace the calls and retry with backoff.
+        if i:
+            time.sleep(THROTTLE_S)
+        r7 = pn = None
+        for attempt in range(4):
+            try:
+                r7, pn = fetch_batch(blat, blon)
+                break
+            except Exception as e:
+                wait = 20.0 * (2**attempt)
+                if attempt == 3:
+                    click.echo(f"  ! batch {i} failed after retries: {e}", err=True)
+                else:
+                    time.sleep(wait)
+        if r7 is None or pn is None:
+            failed += 1
+            r7 = [float("nan")] * len(blat)
+            pn = [float("nan")] * len(blat)
         rain_7d_all.extend(r7)
         precip_now_all.extend(pn)
+    if failed:
+        click.echo(f"  ! {failed}/{len(batches)} batch(es) unrecoverable — written as null", err=True)
 
     # Sample the GEE static susceptibility raster at every grid point so the
     # frontend can compute live risk per cell without re-loading the COG.
     static_norm: list[float] = []
     static_low = 0.0
     static_high = 1.0
-    if SUSC_PATH.exists():
-        click.echo(f"[susc] sampling {SUSC_PATH.name} at {len(flat_lats)} grid points")
-        with rasterio.open(SUSC_PATH) as ds:
+    if reuse_static:
+        prev = json.loads(OUT_PATH.read_text())
+        prev_static = prev.get("static_norm") or []
+        if len(prev_static) != len(flat_lats):
+            click.echo(
+                f"ERROR: published grid has {len(prev_static)} points but this run has "
+                f"{len(flat_lats)} — refusing to pair mismatched grids",
+                err=True,
+            )
+            sys.exit(2)
+        static_norm = prev_static
+        static_low = float(prev.get("static_norm_low", 0.0))
+        static_high = float(prev.get("static_norm_high", 1.0))
+    elif susc_path.exists():
+        click.echo(f"[susc] sampling {susc_path.name} at {len(flat_lats)} grid points")
+        with rasterio.open(susc_path) as ds:
             coords = list(zip(flat_lons, flat_lats))
             samples = list(ds.sample(coords, indexes=1))
             raw = np.array([s[0] if np.isfinite(s[0]) else float("nan") for s in samples])
@@ -174,12 +242,14 @@ def main(step: float, batch: int) -> None:
         else:
             static_norm = [0.0] * len(flat_lats)
     else:
-        click.echo(f"[susc] {SUSC_PATH.name} missing — static_norm filled with zeros")
+        click.echo(f"[susc] {susc_path.name} missing — static_norm filled with zeros")
         static_norm = [0.0] * len(flat_lats)
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": "Open-Meteo Forecast API (past_days=7 daily + hourly precipitation)",
+        "extent": extent,
+        "static_source": susc_path.name,
         "bbox": [bbox["minx"], bbox["miny"], bbox["maxx"], bbox["maxy"]],
         "grid_bbox": [float(lons[0]), float(lats[0]), float(lons[-1]), float(lats[-1])],
         "rows": rows,
@@ -189,10 +259,18 @@ def main(step: float, batch: int) -> None:
         "precip_now_norm_cap_mm_per_hr": PRECIP_NOW_NORM_CAP,
         "static_norm_low": static_low,
         "static_norm_high": static_high,
-        "rain_7d_mm": [round(v, 2) for v in rain_7d_all],
-        "precip_now_mm_per_hr": [round(v, 2) for v in precip_now_all],
+        "rain_7d_mm": [None if v != v else round(v, 2) for v in rain_7d_all],
+        "precip_now_mm_per_hr": [None if v != v else round(v, 2) for v in precip_now_all],
         "static_norm": static_norm,
     }
+    good = sum(1 for v in rain_7d_all if v == v)
+    if good < 0.9 * len(rain_7d_all):
+        click.echo(
+            f"ERROR: only {good}/{len(rain_7d_all)} points fetched — refusing to "
+            "overwrite the published grid with a mostly-empty one",
+            err=True,
+        )
+        sys.exit(3)
     OUT_PATH.write_text(json.dumps(payload))
     click.echo(f"\n[write] {OUT_PATH}  ({OUT_PATH.stat().st_size/1024:.1f} KB)")
 

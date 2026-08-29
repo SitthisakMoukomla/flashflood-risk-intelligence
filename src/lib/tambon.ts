@@ -64,8 +64,10 @@ export type WetnessGrid = {
   precip_now_norm_cap_mm_per_hr: number;
   static_norm_low?: number;
   static_norm_high?: number;
-  rain_7d_mm: number[];
-  precip_now_mm_per_hr: number[];
+  /** null where the last Open-Meteo fetch did not reach — treat as
+   *  "not measured", never as zero. */
+  rain_7d_mm: (number | null)[];
+  precip_now_mm_per_hr: (number | null)[];
   /** Per-cell static hazard (0..1). Filled in by 06_wetness_grid.py
    *  by sampling the GEE susceptibility raster. */
   static_norm?: number[];
@@ -79,8 +81,16 @@ export function computeLiveGrid(grid: WetnessGrid): Float32Array {
   const pcap = grid.precip_now_norm_cap_mm_per_hr;
   const staticArr = grid.static_norm ?? new Array(n).fill(0);
   for (let i = 0; i < n; i++) {
-    const wet = Math.min(1, (grid.rain_7d_mm[i] ?? 0) / wcap);
-    const pre = Math.min(1, (grid.precip_now_mm_per_hr[i] ?? 0) / pcap);
+    const rain = grid.rain_7d_mm[i];
+    const precip = grid.precip_now_mm_per_hr[i];
+    if (rain === null || rain === undefined) {
+      // No rain measurement here. Drawing 0 would render as "low risk",
+      // which is a claim we cannot make — mark the cell unknown instead.
+      out[i] = NaN;
+      continue;
+    }
+    const wet = Math.min(1, rain / wcap);
+    const pre = Math.min(1, (precip ?? 0) / pcap);
     const s = staticArr[i] ?? 0;
     const base = s * (0.4 + 0.6 * wet);
     const kick = pre * (0.3 + 0.4 * wet);

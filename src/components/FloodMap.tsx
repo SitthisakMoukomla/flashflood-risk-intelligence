@@ -342,11 +342,23 @@ function bilinearSample(
   const y1 = Math.min(rows - 1, y0 + 1);
   const fx = Math.max(0, Math.min(1, gx - x0));
   const fy = Math.max(0, Math.min(1, gy - y0));
-  const v00 = Number(arr[y0 * cols + x0]) || 0;
-  const v10 = Number(arr[y0 * cols + x1]) || 0;
-  const v01 = Number(arr[y1 * cols + x0]) || 0;
-  const v11 = Number(arr[y1 * cols + x1]) || 0;
-  return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
+  // Corners may be NaN where no measurement exists. Plain bilinear would
+  // let one unmeasured corner poison the whole cell, so renormalise over
+  // the corners that do have data and only give up when none of them do.
+  const corners: [number, number][] = [
+    [Number(arr[y0 * cols + x0]), (1 - fx) * (1 - fy)],
+    [Number(arr[y0 * cols + x1]), fx * (1 - fy)],
+    [Number(arr[y1 * cols + x0]), (1 - fx) * fy],
+    [Number(arr[y1 * cols + x1]), fx * fy],
+  ];
+  let acc = 0;
+  let wsum = 0;
+  for (const [v, w] of corners) {
+    if (!Number.isFinite(v)) continue;
+    acc += v * w;
+    wsum += w;
+  }
+  return wsum > 0 ? acc / wsum : NaN;
 }
 
 /** Hexes covering the model grid bbox, clipped to the 9-province AOI
@@ -387,10 +399,11 @@ function renderHexGroup(
 ): Leaflet.LayerGroup {
   const group = L.layerGroup();
   for (const h of hexes) {
-    const t = Math.min(
-      1,
-      Math.max(0, bilinearSample(values, grid.cols, grid.rows, h.gx, h.gy) / cap),
-    );
+    const raw = bilinearSample(values, grid.cols, grid.rows, h.gx, h.gy);
+    // NaN marks a cell with no measurement behind it — leave it blank
+    // rather than colouring it as the lowest band.
+    if (!Number.isFinite(raw)) continue;
+    const t = Math.min(1, Math.max(0, raw / cap));
     let band: HexBand | null = null;
     for (const b of bands) {
       if (t >= b.min) band = b;
@@ -1059,8 +1072,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     if (layerMode !== "wetness" || !grid || !hexCells) return;
     const renderer = ensureHexRenderer(L, map);
+    const rain = Float32Array.from(grid.rain_7d_mm, (v) =>
+      v === null || v === undefined ? NaN : v,
+    );
     wetnessOverlayRef.current = renderHexGroup(
-      L, renderer, hexCells, grid, grid.rain_7d_mm, grid.wetness_norm_cap_mm, WETNESS_BANDS,
+      L, renderer, hexCells, grid, rain, grid.wetness_norm_cap_mm, WETNESS_BANDS,
     ).addTo(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMapReady, layerMode, grid, hexCells]);

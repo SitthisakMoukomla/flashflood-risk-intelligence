@@ -12,15 +12,18 @@ data/dem/
 data/burn/
 data/buildings/
 data/output/
-data/aoi/gadm41_THA_*.json.zip
 
 # Pipeline outputs to keep small/checked-in:
 # - data/aoi/aoi_north_thailand.geojson
 # - data/aoi/aoi_north_provinces.geojson
 # - data/aoi/aoi_bbox.json
+# - data/aoi/gadm41_THA_3.json.zip (source for the country outline)
 !data/aoi/aoi_north_thailand.geojson
 !data/aoi/aoi_north_provinces.geojson
 !data/aoi/aoi_bbox.json
 
 # GEE shards (large; merged by 13_merge_gee_exports.py)
 data/gee_exports/
+
+# Derived, rebuilt by 14_sar_flood.py on demand
+data/aoi/thailand_boundary.geojson

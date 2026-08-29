@@ -16,6 +16,7 @@ import {
   Play,
   RefreshCw,
   Radar,
+  Satellite,
   Search,
   Waves,
   X,
@@ -124,6 +125,27 @@ type ThaiWaterLevelStation = {
     tele_station_long: number;
     tele_station_oldcode?: string | null;
   };
+};
+
+type SarFloodMeta = {
+  generated_at: string;
+  source: string;
+  window_hours: number;
+  tiles_with_flood: number;
+  polygons: number;
+  flood_area_km2: number;
+  flood_area_rai: number;
+  latest_observation: string | null;
+  oldest_observation: string | null;
+};
+
+type SarFloodFC = {
+  type: "FeatureCollection";
+  features: {
+    type: "Feature";
+    geometry: { type: "Polygon"; coordinates: number[][][] };
+    properties: { observed_at: string | null; tile: string };
+  }[];
 };
 
 const THAIWATER_RAIN_24H_URL =
@@ -445,11 +467,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const waterStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const radarCacheRef = useRef<Map<string, Leaflet.TileLayer>>(new Map());
+  const sarFloodLayerRef = useRef<Leaflet.LayerGroup | null>(null);
 
   // Layer z-stack (lower = farther back). Polygons sit on canvas pane
   // (zIndex ~600) so they're always on top for hover/click.
   const Z_BUILDINGS = 350; // bumped above hazard so density reads through
   const Z_RADAR = 450; // RainViewer on top of everything raster
+  const Z_SAR_FLOOD = 400; // observed flood above hazard, below radar
   // At z=12 a 5-10 m building footprint is ~0.2 px wide — sub-pixel and
   // effectively invisible on canvas. The density PNG actually reads better
   // until ~z=14 where buildings start being ≥1 px and the polygon layer
@@ -469,6 +493,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [radarIdx, setRadarIdx] = useState(0);
   const [radarPlaying, setRadarPlaying] = useState(true);
   const [showBuildings, setShowBuildings] = useState(false);
+  const [sarFlood, setSarFlood] = useState<SarFloodFC | null>(null);
+  const [sarFloodMeta, setSarFloodMeta] = useState<SarFloodMeta | null>(null);
+  const [showSarFlood, setShowSarFlood] = useState(true);
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
   // Measured river levels are the most trustworthy layer we have and the
@@ -523,6 +550,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
         } catch {
           /* optional */
+        }
+        try {
+          const [fmRes, fRes] = await Promise.all([
+            fetch("/data/sar_flood_meta.json"),
+            fetch("/data/sar_flood.geojson"),
+          ]);
+          if (fmRes.ok && active) setSarFloodMeta((await fmRes.json()) as SarFloodMeta);
+          if (fRes.ok && active) setSarFlood((await fRes.json()) as SarFloodFC);
+        } catch {
+          /* optional — the SAR layer only exists once the cron has run */
         }
       } catch (e) {
         if (active) setLoadError(e instanceof Error ? e.message : "load failed");
@@ -1041,6 +1078,45 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMapReady, layerMode, grid, hexCells]);
 
+  // Observed flood extent (Sentinel-1 / Copernicus GFM)
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+    if (!L || !map || !isMapReady) return;
+    if (sarFloodLayerRef.current) {
+      sarFloodLayerRef.current.removeFrom(map);
+      sarFloodLayerRef.current = null;
+    }
+    if (!showSarFlood || !sarFlood || sarFlood.features.length === 0) return;
+    if (!map.getPane("sarFlood")) {
+      const pane = map.createPane("sarFlood");
+      pane.style.zIndex = String(Z_SAR_FLOOD);
+    }
+    const group = L.layerGroup();
+    L.geoJSON(sarFlood as unknown as GeoJSON.GeoJsonObject, {
+      pane: "sarFlood",
+      style: {
+        // Water blue, deliberately different from every risk colour so
+        // "observed flood" never reads as "modelled risk".
+        color: "#22d3ee",
+        weight: 1,
+        opacity: 0.9,
+        fillColor: "#0ea5e9",
+        fillOpacity: 0.55,
+      },
+      onEachFeature: (feature, layer) => {
+        const obs = (feature.properties as { observed_at?: string | null })?.observed_at;
+        layer.bindTooltip(
+          `<b>น้ำท่วมตรวจพบ</b><br/>Sentinel-1 · Copernicus GFM` +
+            (obs ? `<br/><span style="opacity:.7">ถ่ายภาพ ${formatTimeBKK(obs)}</span>` : ""),
+          { sticky: true, opacity: 0.95, direction: "top" },
+        );
+      },
+    }).addTo(group);
+    sarFloodLayerRef.current = group.addTo(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMapReady, showSarFlood, sarFlood]);
+
   // Buildings density overlay
   useEffect(() => {
     const L = leafletRef.current;
@@ -1487,6 +1563,22 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           <div className="caps" style={{ padding: "6px 10px 4px" }}>
             เลเยอร์เพิ่มเติม
           </div>
+          <LayerSwitch
+            on={showSarFlood}
+            disabled={!sarFlood}
+            label="น้ำท่วมตรวจพบ (ดาวเทียม)"
+            hint={
+              sarFloodMeta
+                ? `Sentinel-1 · ${formatNumber(Math.round(sarFloodMeta.flood_area_rai))} ไร่ · ${
+                    sarFloodMeta.latest_observation
+                      ? formatTimeBKK(sarFloodMeta.latest_observation)
+                      : "—"
+                  }`
+                : "ไม่มีข้อมูล"
+            }
+            icon={<Satellite size={18} strokeWidth={2} />}
+            onClick={() => setShowSarFlood((v) => !v)}
+          />
           <LayerSwitch
             on={showRainOverlay}
             disabled={!rainLayer}

@@ -1,0 +1,68 @@
+name: Observed flood extent (Sentinel-1)
+
+# Pulls Copernicus EMS Global Flood Monitoring tiles (Sentinel-1 change
+# detection, run operationally by CEMS) from EODC's open STAC API, clips
+# them to Thailand and publishes a small GeoJSON the webapp overlays as
+# its own layer.
+#
+# Cadence: Sentinel-1 revisits a given place every 1-3 days and GFM
+# publishes ~5 h after acquisition, so polling every 6 hours is plenty —
+# 4 runs/day, each a few minutes, well inside the free Actions minutes.
+on:
+  schedule:
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "Look-back window in hours"
+        default: "48"
+
+concurrency:
+  group: sar-flood
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (sparse — the repo carries ~300 MB of building data)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline/scripts/14_sar_flood.py
+            pipeline/data/aoi/gadm41_THA_3.json.zip
+            public/data/sar_flood.geojson
+            public/data/sar_flood_meta.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi
+
+      - name: Fetch GFM tiles and build flood polygons
+        working-directory: pipeline
+        env:
+          # rasterio reads the COGs over HTTP; keep GDAL from listing dirs.
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
+          CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif"
+        run: python scripts/14_sar_flood.py --hours ${{ github.event.inputs.hours || '48' }}
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/sar_flood.geojson public/data/sar_flood_meta.json
+          if git diff --cached --quiet; then
+            echo "no change in observed flood extent — nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore(data): observed flood extent from Sentinel-1 (GFM)"
+          # The Mae Sai logger commits every 30 min — rebase before pushing.
+          git pull --rebase --autostash origin ${GITHUB_REF_NAME}
+          git push

@@ -48,6 +48,19 @@ Pilot outputs use `_pilot` suffix and are independent of full-AOI outputs.
    `data/output/susceptibility.tif` (works with 1..N shards).
 4. Hand off: the webapp grid/hex steps re-run from the merged raster.
 
+## Observed flood extent (Sentinel-1)
+
+`scripts/14_sar_flood.py` pulls Copernicus EMS **Global Flood Monitoring**
+tiles (Sentinel-1 change detection, run operationally by CEMS) from EODC's
+open STAC API — no account, no key — clips them to Thailand and writes
+`public/data/sar_flood.geojson` + `_meta.json` for the webapp's
+"น้ำท่วมตรวจพบ (ดาวเทียม)" layer. Automated by
+`.github/workflows/sar-flood.yml` every 6 hours.
+
+Speckle handling follows the UN-SPIDER recipe: blobs under 25 connected
+20 m pixels (1 ha) are dropped, edges simplified 40 m. The Thailand outline
+is dissolved from the committed GADM level-3 zip on first run.
+
 ## Data sources
 
 | Layer | Source | Auth | Free |

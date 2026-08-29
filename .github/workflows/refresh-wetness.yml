@@ -30,14 +30,19 @@ jobs:
         working-directory: pipeline
         run: uv sync --frozen
 
-      # 06_wetness.py needs pipeline/data/output/village_risk.geojson, a build
-      # artefact that is gitignored and therefore never present in CI — it had
-      # been failing every run since May and silently freezing the map's rain
-      # data. The gridded script is what the frontend actually reads, and it
-      # reuses the published static_norm when the raster is absent.
-      - name: Refresh gridded wetness + precip-now
+      # History: this job used to run 06_wetness.py, which needs a gitignored
+      # build artefact and so failed every run from May onwards, silently
+      # freezing the map's rain data for three months.
+      #
+      # The 7-day accumulation now comes from CHIRPS — one global GeoTIFF per
+      # day, no account, no quota — instead of Open-Meteo, whose free tier is
+      # metered per location-hour and returns 429 partway through a nationwide
+      # grid. CHIRPS preliminary files lag 2-4 days, which is fine for the
+      # soil-moisture term; the live trigger comes from HII stations and radar
+      # in the browser, and those are current.
+      - name: Refresh 7-day rainfall (CHIRPS, nationwide)
         working-directory: pipeline
-        run: uv run python scripts/06_wetness_grid.py
+        run: uv run python scripts/17_rain_chirps.py
 
       - name: Stage updated artefacts
         run: |

@@ -217,6 +217,23 @@ function rainStationColor(mm: number): string {
   return "#d73027";
 }
 
+/** Rainfall intensity (mm in the past hour), Thai Meteorological
+ *  Department classes. Distinct from the 24 h accumulation ramp: this
+ *  answers "is it pouring right now", not "how wet is the ground". */
+function rainIntensityColor(mmPerHour: number): string {
+  if (mmPerHour >= 90) return "#7e22ce"; // หนักมาก
+  if (mmPerHour >= 35) return "#d73027"; // หนัก
+  if (mmPerHour >= 10) return "#f97316"; // ปานกลาง
+  return "#38bdf8"; // เล็กน้อย
+}
+
+function rainIntensityLabel(mmPerHour: number): string {
+  if (mmPerHour >= 90) return "หนักมาก";
+  if (mmPerHour >= 35) return "หนัก";
+  if (mmPerHour >= 10) return "ปานกลาง";
+  return "เล็กน้อย";
+}
+
 /** Situation-level colour (HII tier 1-5; null falls back to neutral). */
 function situationColor(level: number | null): string {
   switch (level) {
@@ -577,6 +594,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [sarImage, setSarImage] = useState<{ tileUrl: string; windowDays: number } | null>(null);
   const [showSarImage, setShowSarImage] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
+  // The same gauges carry two different stories: how much has fallen in a
+  // day (ground wetness) and how hard it is falling now (the trigger).
+  const [rainMode, setRainMode] = useState<"accum" | "intensity">("accum");
   const [showRainStations, setShowRainStations] = useState(false);
   const [rainStations, setRainStations] = useState<ThaiWaterStation[] | null>(null);
   // Measured river levels are the most trustworthy layer we have and the
@@ -1371,17 +1391,26 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (!showRainStations || !rainStations || rainStations.length === 0) return;
 
     const group = L.layerGroup();
+    const intensity = rainMode === "intensity";
     for (const s of rainStations) {
       const lat = s.station.tele_station_lat;
       const lng = s.station.tele_station_long;
       const mm24 = Number(s.rain_24h ?? 0) || 0;
-      const mm1 = Number(s.rain_1h ?? 0) || 0;
-      const radius = 4 + Math.min(8, Math.sqrt(mm24));
+      const raw1h = s.rain_1h;
+      const mm1 = Number(raw1h ?? 0) || 0;
+      // Intensity is about where it is raining *now*. Drawing 3,800 dry
+      // gauges would bury the few dozen that matter, so show only the wet
+      // ones — and skip gauges that never report the hourly figure rather
+      // than painting them as "no rain".
+      if (intensity && (raw1h === null || raw1h === undefined || mm1 <= 0)) continue;
+      const radius = intensity
+        ? 5 + Math.min(9, mm1 * 0.6)
+        : 4 + Math.min(8, Math.sqrt(mm24));
       const marker = L.circleMarker([lat, lng], {
         radius,
         color: "#0a1318",
         weight: 0.6,
-        fillColor: rainStationColor(mm24),
+        fillColor: intensity ? rainIntensityColor(mm1) : rainStationColor(mm24),
         fillOpacity: 0.9,
         interactive: true,
       });
@@ -1392,8 +1421,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         `<b>${name}</b>` +
           (agency ? ` <span style="opacity:.7">${agency}</span>` : "") +
           `<br/>${province}` +
-          `<br/>ฝน 24 ชม. <b>${mm24.toFixed(1)}</b> มม.` +
-          ` · 1 ชม. <b>${mm1.toFixed(1)}</b> มม.` +
+          (intensity
+            ? `<br/>ความเข้มฝน <b style="color:${rainIntensityColor(mm1)}">${mm1.toFixed(1)} มม./ชม. · ${rainIntensityLabel(mm1)}</b>` +
+              `<br/>สะสม 24 ชม. ${mm24.toFixed(1)} มม.`
+            : `<br/>ฝน 24 ชม. <b>${mm24.toFixed(1)}</b> มม.` +
+              ` · 1 ชม. <b>${mm1.toFixed(1)}</b> มม.`) +
           `<br/><span style="opacity:.6;font-size:10px">${s.rainfall_datetime}</span>`,
         { sticky: true, opacity: 0.95, direction: "top" },
       );
@@ -1401,7 +1433,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     group.addTo(map);
     rainStationsLayerRef.current = group;
-  }, [isMapReady, showRainStations, rainStations]);
+  }, [isMapReady, showRainStations, rainStations, rainMode]);
 
   // 6f) HII ThaiWater water-level stations (น้ำท่า) — coloured by
   // ระดับน้ำเทียบตลิ่ง (storage_percent). ≥100% = overtopping, drawn with
@@ -1778,13 +1810,34 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             disabled={!rainStations}
             label="ฝนสถานีตรวจวัด"
             hint={
-              rainStations
-                ? `HII · ${rainStations.length} สถานี · ฝน 24 ชม.`
-                : "ไม่มีข้อมูล"
+              !rainStations
+                ? "ไม่มีข้อมูล"
+                : rainMode === "intensity"
+                  ? `กำลังตก ${rainStations.filter((s) => Number(s.rain_1h ?? 0) > 0).length} สถานี · มม./ชม.`
+                  : `HII · ${rainStations.length} สถานี · ฝน 24 ชม.`
             }
             icon={<Droplets size={18} strokeWidth={2} />}
             onClick={() => setShowRainStations((v) => !v)}
           />
+          {showRainStations && rainStations ? (
+            <div className="rain-mode" role="group" aria-label="รูปแบบข้อมูลฝน">
+              {(
+                [
+                  ["accum", "สะสม 24 ชม."],
+                  ["intensity", "ความเข้มตอนนี้"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setRainMode(mode)}
+                  className={rainMode === mode ? "on" : ""}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
           <LayerSwitch
             on={showWaterStations}
             disabled={!waterStations}
@@ -2356,6 +2409,25 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               icon={<Droplets size={18} strokeWidth={2} />}
               onClick={() => setShowRainStations((v) => !v)}
             />
+            {showRainStations && rainStations ? (
+              <div className="rain-mode" role="group" aria-label="รูปแบบข้อมูลฝน">
+                {(
+                  [
+                    ["accum", "สะสม 24 ชม."],
+                    ["intensity", "ความเข้มตอนนี้"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setRainMode(mode)}
+                    className={rainMode === mode ? "on" : ""}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <LayerSwitch
               on={showWaterStations}
               disabled={!waterStations}

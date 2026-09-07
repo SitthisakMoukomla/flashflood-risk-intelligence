@@ -16,6 +16,7 @@
     "lucide-react": "^0.468.0",
     "next": "latest",
     "pmtiles": "^4.5.0",
+    "protomaps-leaflet": "^5.1.0",
     "react": "latest",
     "react-dom": "latest"
   },

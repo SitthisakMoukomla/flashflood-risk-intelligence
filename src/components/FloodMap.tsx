@@ -78,6 +78,19 @@ type BuildingsOverlayMeta = {
   total_buildings: number;
 };
 
+/** Nationwide footprint vector tiles (pipeline script 17), hosted on R2. */
+type BuildingsTilesMeta = {
+  generated_at: string;
+  tiles: {
+    file: string;
+    url?: string | null;
+    layer: string;
+    min_zoom: number;
+    max_zoom: number;
+    count: number;
+  };
+};
+
 type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
 
 /** A place from the Nominatim proxy (/api/geocode). */
@@ -553,8 +566,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const liveOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
   const hexRendererRef = useRef<Leaflet.Renderer | null>(null);
   const buildingsOverlayRef = useRef<Leaflet.ImageOverlay | null>(null);
-  const buildingsPtsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
-  const buildingsPtsCacheRef = useRef<Map<string, [number, number][]>>(new Map());
+  const buildingsTilesLayerRef = useRef<Leaflet.Layer | null>(null);
   const basemapRef = useRef<Leaflet.TileLayer | null>(null);
   const userMarkerRef = useRef<Leaflet.LayerGroup | null>(null);
   const rainStationsLayerRef = useRef<Leaflet.LayerGroup | null>(null);
@@ -574,12 +586,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   // effectively invisible on canvas. The density PNG actually reads better
   // until ~z=14 where buildings start being ≥1 px and the polygon layer
   // earns its place.
-  const VECTOR_BUILDING_ZOOM = 14;
 
   const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
   const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
+  const [buildingsTilesMeta, setBuildingsTilesMeta] = useState<BuildingsTilesMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
 
   // null = no hazard layer shown (basemap visible). Click an active mode
@@ -651,6 +663,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
         } catch {
           /* optional */
+        }
+        try {
+          const btRes = await fetch("/data/buildings_tiles_meta.json");
+          if (btRes.ok && active) setBuildingsTilesMeta((await btRes.json()) as BuildingsTilesMeta);
+        } catch {
+          /* optional — without the archive the density blob stays at every zoom */
         }
         try {
           const r = await fetch("/api/sar-mosaic");
@@ -797,28 +815,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     [tambonFC, wetness, grid],
   );
 
-  // Bounds per tambon, memoised: used to decide whether the tambon the
-  // drawer is showing is actually on screen. selectedRow never resolves to
-  // null (it falls back to the top-risk tambon, always in the north), so
-  // without this check a user in Isaan at z14 would lose the density
-  // overlay and be handed footprints of a tambon 500 km away.
-  const tambonBoundsRef = useRef<Map<string, Leaflet.LatLngBounds>>(new Map());
-  // Component-level lookup; the tambon-layer effect keeps its own local one.
-  const tambonByGid = useMemo(
-    () => new Map(rows.map((r) => [r.feature.properties.GID_3, r])),
-    [rows],
-  );
-  const tambonInView = (L: typeof Leaflet, map: Leaflet.Map, gid: string | null): boolean => {
-    if (!gid) return false;
-    let b = tambonBoundsRef.current.get(gid);
-    if (!b) {
-      const row = tambonByGid.get(gid);
-      if (!row) return false;
-      b = L.geoJSON(row.feature as GeoJSON.GeoJsonObject).getBounds();
-      tambonBoundsRef.current.set(gid, b);
-    }
-    return map.getBounds().intersects(b);
-  };
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => scoreOfRow(b, layerMode) - scoreOfRow(a, layerMode)),
     [rows, layerMode],
@@ -864,18 +860,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     if (!selectedGid) return userRow ?? sortedRows[0] ?? null;
     return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? userRow ?? sortedRows[0] ?? null;
   }, [rows, sortedRows, selectedGid, userRow]);
-
-  // The buildings effects pick density blob vs. vector footprints by whether
-  // the selected tambon is on screen. Panning changes that without a zoom,
-  // so the map's moveend listener re-evaluates it through these refs and
-  // nudges the effects via `tambonVisible`.
-  const effectiveGidRef = useRef<string | null>(null);
-  const tambonInViewRef = useRef(tambonInView);
-  const [tambonVisible, setTambonVisible] = useState(false);
-  useEffect(() => {
-    effectiveGidRef.current = selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
-    tambonInViewRef.current = tambonInView;
-  });
 
   // When the user's coordinate falls outside the 9 provinces we have no
   // tambon for them. Showing `selectedRow` there would name a random
@@ -979,12 +963,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       map.on("zoomend", () => setZoom(map.getZoom()));
-      map.on("moveend", () =>
-        setTambonVisible(
-          map.getZoom() >= VECTOR_BUILDING_ZOOM &&
-            tambonInViewRef.current(L, map, effectiveGidRef.current),
-        ),
-      );
       mapRef.current = map;
       setIsMapReady(true);
     })();
@@ -1334,19 +1312,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       buildingsOverlayRef.current = null;
     }
     if (!showBuildings || !buildingsMeta) return;
-    // When zoomed in we render actual building polygons (effect 7) for
-    // the selected (or auto-selected) tambon — let those carry the
-    // visual instead of the blob.
-    const effectiveGid =
-      selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
-    if (zoom >= VECTOR_BUILDING_ZOOM && tambonInView(L, map, effectiveGid)) return;
+    // From the footprint archive's first zoom the real polygons (effect 7)
+    // carry the visual instead of the blob.
+    if (buildingsTilesMeta && zoom >= buildingsTilesMeta.tiles.min_zoom) return;
     const [w, s, e, n] = buildingsMeta.grid_bbox;
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
       interactive: false,
       zIndex: Z_BUILDINGS,
     }).addTo(map);
-  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid, selectedRow, tambonVisible]);
+  }, [isMapReady, showBuildings, buildingsMeta, buildingsTilesMeta, zoom]);
 
   // Reset playback position whenever a fresh radar payload arrives.
   useEffect(() => {
@@ -1553,77 +1528,62 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     waterStationsLayerRef.current = group;
   }, [isMapReady, showWaterStations, waterStations]);
 
-  // 7) Per-tambon building points (vector). Replaces the density blob with
-  // actual centroids when the user has selected a tambon AND zoomed past 12.
+  // 7) Building footprints — one nationwide vector-tile archive on R2, so
+  // every house draws wherever the user zooms in, with no tambon selection
+  // involved. Leaflet keeps the layer idle below its minZoom, so it can stay
+  // attached and keep its tile cache across zooms.
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
     if (!L || !map || !isMapReady) return;
-
-    const clear = () => {
-      if (buildingsPtsLayerRef.current) {
-        buildingsPtsLayerRef.current.removeFrom(map);
-        buildingsPtsLayerRef.current = null;
-      }
-    };
-
-    // Fall back to the resolved selectedRow's GID if the user hasn't
-    // explicitly clicked a tambon yet (e.g. denied geolocation) — the
-    // drawer is already showing data for it, the buildings layer should
-    // match.
-    const effectiveGid =
-      selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
-    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !tambonInView(L, map, effectiveGid)) {
-      clear();
-      return;
-    }
-
     let cancelled = false;
-    const cache = buildingsPtsCacheRef.current;
-    const draw = (polygons: [number, number][][]) => {
-      if (cancelled) return;
-      clear();
-      if (polygons.length === 0) return;
-      const group = L.layerGroup();
-      // Stronger styling so footprints read clearly on Satellite basemap.
-      // Stroke goes 1 → 1.4 with zoom; fill opacity 0.85 stays solid.
-      const stroke = zoom >= 17 ? 1.4 : zoom >= 15 ? 1.1 : 1;
-      for (const ring of polygons) {
-        // ring is [[lng, lat], ...] — Leaflet wants [[lat, lng], ...]
-        const latlngs = ring.map(([lng, lat]) => [lat, lng] as [number, number]);
-        L.polygon(latlngs, {
-          color: "#0a1318",
-          weight: stroke,
-          fillColor: "#fdae61",
-          fillOpacity: 0.85,
-          interactive: false,
-        }).addTo(group);
+    const detach = () => {
+      if (buildingsTilesLayerRef.current) {
+        buildingsTilesLayerRef.current.removeFrom(map);
+        buildingsTilesLayerRef.current = null;
       }
-      group.addTo(map);
-      buildingsPtsLayerRef.current = group;
     };
-
-    const cached = cache.get(effectiveGid);
-    if (cached) {
-      draw(cached as unknown as [number, number][][]);
-    } else {
-      fetch(`/data/buildings_pts/${effectiveGid}.json`)
-        .then((r) =>
-          r.ok ? (r.json() as Promise<[number, number][][]>) : Promise.resolve([]),
-        )
-        .then((polys) => {
-          cache.set(effectiveGid, polys as unknown as [number, number][]);
-          draw(polys);
-        })
-        .catch(() => {
-          /* silent — fall back to density blob */
-        });
-    }
-
+    detach();
+    const t = buildingsTilesMeta?.tiles;
+    if (!showBuildings || !t) return;
+    (async () => {
+      const { leafletLayer, PolygonSymbolizer } = await import("protomaps-leaflet");
+      if (cancelled) return;
+      const layer = leafletLayer({
+        // levelDiff 0: one data tile per 256 px display tile, so the first
+        // zoom the archive holds (z13) is also the first zoom that draws.
+        // The default of 1 would ask for z12 data at z13 and paint nothing.
+        sources: {
+          [t.layer]: { url: t.url || `/data/${t.file}`, levelDiff: 0, maxDataZoom: t.max_zoom },
+        },
+        minZoom: t.min_zoom,
+        maxZoom: 19,
+        zIndex: Z_BUILDINGS,
+        attribution: "Google Open Buildings v3",
+        paintRules: [
+          {
+            dataSource: t.layer,
+            dataLayer: t.layer,
+            symbolizer: new PolygonSymbolizer({
+              // Same palette as the old per-tambon polygons: reads on the
+              // Satellite basemap, stroke thickens as streets come into view.
+              fill: "#fdae61",
+              opacity: 0.85,
+              stroke: "#0a1318",
+              width: (z: number) => (z >= 17 ? 1.4 : z >= 15 ? 1.1 : 0.8),
+            }),
+          },
+        ],
+      }) as unknown as Leaflet.Layer;
+      if (cancelled) return;
+      layer.addTo(map);
+      buildingsTilesLayerRef.current = layer;
+    })();
     return () => {
       cancelled = true;
+      detach();
     };
-  }, [isMapReady, showBuildings, selectedGid, selectedRow, zoom, tambonVisible]);
+  }, [isMapReady, showBuildings, buildingsTilesMeta]);
 
   // ─── Actions ─────────────────────────────────────────────────
   const flyToTambon = (gid: string) => {

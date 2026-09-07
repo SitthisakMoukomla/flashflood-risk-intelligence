@@ -67,6 +67,35 @@ if (existsSync(bmPath)) {
   notes.push(`buildings: ${(bm.total_buildings ?? 0).toLocaleString()} over bbox ${bm.grid_bbox?.map((v) => v.toFixed(1))}`);
 }
 
+// 1c. Building footprints: the meta points the app at an archive on R2.
+// From z13 the density blob hides in favour of these tiles, so a meta
+// whose URL does not answer would leave the layer blank exactly where the
+// user zoomed in to see houses.
+const btPath = "public/data/buildings_tiles_meta.json";
+if (existsSync(btPath)) {
+  const t = read(btPath).tiles ?? {};
+  if ((t.count ?? 0) < 20_000_000)
+    problems.push(`footprint archive holds ${t.count} buildings — a nationwide build has 40M+`);
+  const url = t.url && /^https?:/.test(t.url) ? t.url : null;
+  if (url) {
+    try {
+      const res = await fetch(url, {
+        headers: { Range: "bytes=0-127" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!(res.ok || res.status === 206))
+        problems.push(`footprint archive ${url} answered ${res.status}`);
+      else notes.push(`footprints: ${(t.count ?? 0).toLocaleString()} buildings, z${t.min_zoom}-z${t.max_zoom}, archive reachable`);
+    } catch (e) {
+      problems.push(`footprint archive ${url} unreachable: ${e.message}`);
+    }
+  } else if (!existsSync(`public/data/${t.file}`)) {
+    problems.push(`footprint meta has no hosted URL and no local ${t.file}`);
+  } else {
+    notes.push(`footprints: local ${t.file} (dev only — not hosted)`);
+  }
+}
+
 // 2. Rain grid: nulls are legitimate (not yet fetched) but not everywhere.
 const gridPath = "public/data/wetness_grid.json";
 if (!existsSync(gridPath)) {

@@ -121,6 +121,31 @@ performance.getEntriesByType('resource')
 
 ---
 
+## อาการ: ซูมแล้วไม่เห็นบ้านรายหลัง (เห็นแต่จุดความหนาแน่น)
+
+บ้านรายหลังมาจาก `buildings.pmtiles` (~GB) บน R2 ไม่ได้อยู่ใน repo
+เว็บอ่าน URL จาก `public/data/buildings_tiles_meta.json`
+
+1. เปิด URL ใน meta ตรง ๆ — ถ้าไม่ใช่ 200/206 แปลว่าไฟล์บน R2 หาย
+2. สร้างใหม่ (ต้องมี CSV ทั้ง 6 แผ่นใน `pipeline/data/buildings/` และ `brew install tippecanoe`):
+
+```bash
+cd pipeline && uv run python scripts/17_buildings_tiles.py
+```
+
+   ใช้เวลาเป็นชั่วโมง ได้ `pipeline/data/output/buildings.pmtiles` และเขียน meta ให้เอง
+
+3. อัปโหลด (ตั้ง `R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET R2_PUBLIC_BASE`
+   ค่าเดียวกับ secrets ใน GitHub Actions):
+
+```bash
+cd pipeline && uv run python scripts/r2_upload.py data/output/buildings.pmtiles
+```
+
+4. `npm run deploy` — preflight จะยิง HEAD ไปที่ URL ใน meta ก่อน ถ้าไม่ตอบจะไม่ยอม deploy
+
+---
+
 ## ค่าใช้จ่าย — ตรวจว่ายังฟรีอยู่
 
 | บริการ | โควตาฟรี | ใช้จริง |

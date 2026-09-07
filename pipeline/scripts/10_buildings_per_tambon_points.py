@@ -1,5 +1,10 @@
 """Phase 1.10 — Per-tambon building FOOTPRINTS for the zoom-in vector layer.
 
+SUPERSEDED: the app now draws footprints from the nationwide vector-tile
+archive built by script 17 (buildings.pmtiles on R2), and the per-tambon
+files this wrote were removed from public/data. Kept for the record and
+for anyone who wants a plain-JSON extract of one tambon.
+
 The 1 km density PNG (script 09) is a fine overview but turns into a blurry
 blob once the user zooms past z=12. This pipeline extracts every Open
 Buildings v3 polygon that falls inside each of the 663 northern tambon and

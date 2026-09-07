@@ -19,7 +19,8 @@
 Copernicus GFM                14_sar_flood.py       sar_flood.pmtiles      เลเยอร์น้ำท่วม
 CHIRPS                        17_rain_chirps.py     wetness_grid.json      hex เสี่ยง
 Copernicus DEM + HydroSHEDS   15_susceptibility     susceptibility.tif     hex พื้นที่เสี่ยง
-Google Open Buildings         08/09/10_buildings    buildings_*.json       เลเยอร์บ้านเรือน
+Google Open Buildings         09_buildings_density  buildings_density.png  ความหนาแน่นบ้าน (z≤12)
+Google Open Buildings         17_buildings_tiles    buildings.pmtiles (R2) บ้านรายหลัง (z≥13)
 GADM                          01_aoi_mask.py        village_risk.geojson   ขอบเขตตำบล
 
 เรียกสดจากเบราว์เซอร์ (ไม่ผ่าน pipeline)

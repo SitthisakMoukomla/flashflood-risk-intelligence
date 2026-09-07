@@ -865,6 +865,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? userRow ?? sortedRows[0] ?? null;
   }, [rows, sortedRows, selectedGid, userRow]);
 
+  // The buildings effects pick density blob vs. vector footprints by whether
+  // the selected tambon is on screen. Panning changes that without a zoom,
+  // so the map's moveend listener re-evaluates it through these refs and
+  // nudges the effects via `tambonVisible`.
+  const effectiveGidRef = useRef<string | null>(null);
+  const tambonInViewRef = useRef(tambonInView);
+  const [tambonVisible, setTambonVisible] = useState(false);
+  useEffect(() => {
+    effectiveGidRef.current = selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
+    tambonInViewRef.current = tambonInView;
+  });
+
   // When the user's coordinate falls outside the 9 provinces we have no
   // tambon for them. Showing `selectedRow` there would name a random
   // high-risk tambon hundreds of km away — the hero must say "outside
@@ -967,6 +979,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       map.on("zoomend", () => setZoom(map.getZoom()));
+      map.on("moveend", () =>
+        setTambonVisible(
+          map.getZoom() >= VECTOR_BUILDING_ZOOM &&
+            tambonInViewRef.current(L, map, effectiveGidRef.current),
+        ),
+      );
       mapRef.current = map;
       setIsMapReady(true);
     })();
@@ -1328,7 +1346,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       interactive: false,
       zIndex: Z_BUILDINGS,
     }).addTo(map);
-  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid, selectedRow]);
+  }, [isMapReady, showBuildings, buildingsMeta, zoom, selectedGid, selectedRow, tambonVisible]);
 
   // Reset playback position whenever a fresh radar payload arrives.
   useEffect(() => {
@@ -1605,7 +1623,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return () => {
       cancelled = true;
     };
-  }, [isMapReady, showBuildings, selectedGid, selectedRow, zoom]);
+  }, [isMapReady, showBuildings, selectedGid, selectedRow, zoom, tambonVisible]);
 
   // ─── Actions ─────────────────────────────────────────────────
   const flyToTambon = (gid: string) => {

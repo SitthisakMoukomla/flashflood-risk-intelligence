@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-09-07T05:53:19.366107+00:00",
+  "source": "Google Open Buildings v3 — confidence ≥ 0.7 footprints",
+  "tiles": {
+    "file": "buildings.pmtiles",
+    "url": "https://pub-3f4b09707ccd46ec948313a3513e3b25.r2.dev/buildings.pmtiles",
+    "layer": "buildings",
+    "min_zoom": 13,
+    "max_zoom": 15,
+    "bytes": 1868778934,
+    "count": 45139126
+  }
+}

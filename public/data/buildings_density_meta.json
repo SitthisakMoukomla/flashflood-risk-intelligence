@@ -1,23 +1,24 @@
 {
-  "generated_at": "2026-05-09T09:45:07.488751+00:00",
+  "generated_at": "2026-09-07T04:39:12.114729+00:00",
   "source": "Google Open Buildings v3 — confidence ≥ 0.7 centroids",
   "bbox": [
-    97.3452,
-    17.2055,
-    101.3594,
+    97.3455,
+    5.616,
+    105.6391,
     20.4631
   ],
   "grid_bbox": [
-    97.3452,
-    17.2055,
-    101.3652,
-    20.465500000000002
+    97.3455,
+    5.616,
+    105.6405,
+    20.466
   ],
-  "rows": 326,
-  "cols": 402,
-  "step_deg": 0.01,
-  "total_buildings": 6266233,
+  "rows": 2970,
+  "cols": 1659,
+  "step_deg": 0.005,
+  "total_buildings": 45101158,
+  "bbox_total_buildings": 63308357,
   "log_norm_p5": 0.6931471824645996,
-  "log_norm_p98": 6.897159099578857,
+  "log_norm_p98": 5.89164400100708,
   "ramp": "orange"
 }

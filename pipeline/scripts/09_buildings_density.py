@@ -39,6 +39,9 @@ from tqdm import tqdm
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BBOX_PATH = REPO_ROOT / "data" / "aoi" / "aoi_bbox.json"
 AOI_PATH = REPO_ROOT / "data" / "aoi" / "aoi_north_thailand.geojson"
+# Nationwide: one dissolved outline (built by 14_sar_flood.py from GADM).
+# Its bounds become the grid bbox, so no separate bbox file is needed.
+THAILAND_PATH = REPO_ROOT / "data" / "aoi" / "thailand_boundary.geojson"
 BUILD_DIR = REPO_ROOT / "data" / "buildings"
 PUBLIC_DATA = REPO_ROOT.parent / "public" / "data"
 PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
@@ -83,11 +86,25 @@ def stream_centroids(gz_path: Path, bbox: tuple[float, float, float, float]) -> 
     type=click.Choice(["orange", "magma"]),
     help="Color ramp",
 )
-def main(step: float, ramp: str) -> None:
-    if not BBOX_PATH.exists():
-        raise SystemExit("missing aoi_bbox.json")
-    bbox_d = json.loads(BBOX_PATH.read_text())
-    bbox = (bbox_d["minx"], bbox_d["miny"], bbox_d["maxx"], bbox_d["maxy"])
+@click.option(
+    "--extent",
+    default="north",
+    type=click.Choice(["north", "thailand"]),
+    help="north = 9-province AOI (original); thailand = whole country",
+)
+def main(step: float, ramp: str, extent: str) -> None:
+    if extent == "thailand":
+        if not THAILAND_PATH.exists():
+            raise SystemExit(f"missing {THAILAND_PATH} — run 14_sar_flood.py once to build it")
+        aoi_path = THAILAND_PATH
+        bbox = tuple(gpd.read_file(THAILAND_PATH).total_bounds)  # minx, miny, maxx, maxy
+    else:
+        if not BBOX_PATH.exists():
+            raise SystemExit("missing aoi_bbox.json")
+        bbox_d = json.loads(BBOX_PATH.read_text())
+        bbox = (bbox_d["minx"], bbox_d["miny"], bbox_d["maxx"], bbox_d["maxy"])
+        aoi_path = AOI_PATH
+    click.echo(f"[extent] {extent}: bbox {tuple(round(v, 3) for v in bbox)}")
     minx, miny, maxx, maxy = bbox
     nx = int(np.ceil((maxx - minx) / step))
     ny = int(np.ceil((maxy - miny) / step))
@@ -118,9 +135,9 @@ def main(step: float, ramp: str) -> None:
 
     # Rasterize the dissolved 9-province AOI polygon to the same grid so we
     # can mask buildings that landed in Myanmar / Laos slivers of the bbox.
-    if AOI_PATH.exists():
-        click.echo(f"[mask] rasterising {AOI_PATH.name} to {ny}x{nx} grid")
-        aoi = gpd.read_file(AOI_PATH).to_crs("EPSG:4326")
+    if aoi_path.exists():
+        click.echo(f"[mask] rasterising {aoi_path.name} to {ny}x{nx} grid")
+        aoi = gpd.read_file(aoi_path).to_crs("EPSG:4326")
         # Origin at top-left (north_lat=miny+ny*step, west_lon=minx); pixel size = step.
         north_lat = miny + ny * step
         transform = Affine(step, 0, minx, 0, -step, north_lat)
@@ -131,12 +148,15 @@ def main(step: float, ramp: str) -> None:
             fill=0,
             dtype=np.uint8,
         )
-        before = int((counts > 0).sum())
+        before_cells = int((counts > 0).sum())
+        before_bldg = int(counts.sum())
         counts = np.where(aoi_mask > 0, counts, 0)
-        after = int((counts > 0).sum())
+        after_cells = int((counts > 0).sum())
+        after_bldg = int(counts.sum())
         click.echo(
-            f"[mask] dropped {before - after:,} buildings outside AOI "
-            f"({100 * (before - after) / max(before, 1):.1f}%); kept {after:,}"
+            f"[mask] cells: dropped {before_cells - after_cells:,} outside AOI, kept {after_cells:,}; "
+            f"buildings: {before_bldg:,} in bbox → {after_bldg:,} inside AOI "
+            f"({100 * (before_bldg - after_bldg) / max(before_bldg, 1):.1f}% were across the border)"
         )
     else:
         aoi_mask = np.ones((ny, nx), dtype=np.uint8)
@@ -198,7 +218,11 @@ def main(step: float, ramp: str) -> None:
                 "rows": ny,
                 "cols": nx,
                 "step_deg": step,
-                "total_buildings": int(total),
+                # Inside the country outline. The bbox also covers slivers of
+                # Myanmar, Laos, Cambodia and Malaysia; publishing that raw
+                # total would overstate Thailand — same trap as the SAR area.
+                "total_buildings": int(counts.sum()),
+                "bbox_total_buildings": int(total),
                 "log_norm_p5": p5,
                 "log_norm_p98": p98,
                 "ramp": ramp,

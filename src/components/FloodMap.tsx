@@ -797,6 +797,28 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     [tambonFC, wetness, grid],
   );
 
+  // Bounds per tambon, memoised: used to decide whether the tambon the
+  // drawer is showing is actually on screen. selectedRow never resolves to
+  // null (it falls back to the top-risk tambon, always in the north), so
+  // without this check a user in Isaan at z14 would lose the density
+  // overlay and be handed footprints of a tambon 500 km away.
+  const tambonBoundsRef = useRef<Map<string, Leaflet.LatLngBounds>>(new Map());
+  // Component-level lookup; the tambon-layer effect keeps its own local one.
+  const tambonByGid = useMemo(
+    () => new Map(rows.map((r) => [r.feature.properties.GID_3, r])),
+    [rows],
+  );
+  const tambonInView = (L: typeof Leaflet, map: Leaflet.Map, gid: string | null): boolean => {
+    if (!gid) return false;
+    let b = tambonBoundsRef.current.get(gid);
+    if (!b) {
+      const row = tambonByGid.get(gid);
+      if (!row) return false;
+      b = L.geoJSON(row.feature as GeoJSON.GeoJsonObject).getBounds();
+      tambonBoundsRef.current.set(gid, b);
+    }
+    return map.getBounds().intersects(b);
+  };
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => scoreOfRow(b, layerMode) - scoreOfRow(a, layerMode)),
     [rows, layerMode],
@@ -1299,7 +1321,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     // visual instead of the blob.
     const effectiveGid =
       selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
-    if (zoom >= VECTOR_BUILDING_ZOOM && effectiveGid) return;
+    if (zoom >= VECTOR_BUILDING_ZOOM && tambonInView(L, map, effectiveGid)) return;
     const [w, s, e, n] = buildingsMeta.grid_bbox;
     buildingsOverlayRef.current = L.imageOverlay("/data/buildings_density.png", [[s, w], [n, e]], {
       opacity: 0.85,
@@ -1533,7 +1555,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     // match.
     const effectiveGid =
       selectedGid ?? selectedRow?.feature.properties.GID_3 ?? null;
-    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !effectiveGid) {
+    if (!showBuildings || zoom < VECTOR_BUILDING_ZOOM || !tambonInView(L, map, effectiveGid)) {
       clear();
       return;
     }

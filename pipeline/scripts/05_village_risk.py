@@ -37,6 +37,8 @@ from tqdm import tqdm
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SUSC_PATH = REPO_ROOT / "data" / "output" / "susceptibility.tif"
+# Nationwide raster built locally by 15_susceptibility_thailand.py (no GEE).
+SUSC_TH_PATH = REPO_ROOT / "data" / "output" / "susceptibility_thailand.tif"
 ADMIN_DIR = REPO_ROOT / "data" / "aoi"
 ADMIN_DIR.mkdir(parents=True, exist_ok=True)
 OUT_DIR = REPO_ROOT / "data" / "output"
@@ -150,9 +152,17 @@ def zonal_stats_per_polygon(
     return pd.DataFrame(records)
 
 
-def main() -> int:
-    if not SUSC_PATH.exists():
-        click.echo(f"ERROR: {SUSC_PATH} not found", err=True)
+@click.command()
+@click.option(
+    "--extent",
+    default="north",
+    type=click.Choice(["north", "thailand"]),
+    help="north = 9 provinces from the GEE raster; thailand = all 77 from the local raster",
+)
+def main(extent: str) -> int:
+    susc_path = SUSC_TH_PATH if extent == "thailand" else SUSC_PATH
+    if not susc_path.exists():
+        click.echo(f"ERROR: {susc_path} not found", err=True)
         return 2
 
     download_gadm_level3()
@@ -161,10 +171,12 @@ def main() -> int:
     full = gpd.read_file(f"zip://{GADM_L3_PATH}")
     click.echo(f"[load] {len(full)} subdistricts in Thailand")
 
-    north = full[full["NAME_1"].isin(NORTHERN_PROVINCES_GADM)].copy()
-    click.echo(
-        f"[filter] {len(north)} subdistricts in 9 northern provinces"
-    )
+    if extent == "thailand":
+        north = full.copy()  # variable name kept; every tambon in the country
+        click.echo(f"[filter] {len(north)} subdistricts — whole country")
+    else:
+        north = full[full["NAME_1"].isin(NORTHERN_PROVINCES_GADM)].copy()
+        click.echo(f"[filter] {len(north)} subdistricts in 9 northern provinces")
     if len(north) == 0:
         click.echo(
             f"ERROR: no rows matched provinces {NORTHERN_PROVINCES_GADM}", err=True
@@ -172,7 +184,7 @@ def main() -> int:
         return 3
 
     click.echo("[zonal] computing per-subdistrict statistics...")
-    df = zonal_stats_per_polygon(north, SUSC_PATH)
+    df = zonal_stats_per_polygon(north, susc_path)
     click.echo(f"[zonal] {len(df)} subdistricts with valid raster coverage")
 
     # Rescale risk to 0..1 across the AOI (max in this export is ~0.59).

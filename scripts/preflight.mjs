@@ -51,6 +51,22 @@ if (!existsSync(metaPath)) {
   notes.push(`flood: ${(m.flood_area_rai ?? 0).toLocaleString()} rai over ${days} days`);
 }
 
+// 1b. Buildings density: after the nationwide build the overlay must span
+// the country, not just the northern AOI it started with.
+const bmPath = "public/data/buildings_density_meta.json";
+if (existsSync(bmPath)) {
+  const bm = read(bmPath);
+  const [w, s, e, n] = bm.grid_bbox ?? [];
+  const spansCountry = w <= 97.5 && e >= 105.5 && s <= 6.0 && n >= 20.3;
+  if (!spansCountry)
+    problems.push(`buildings overlay bbox ${JSON.stringify(bm.grid_bbox)} does not span Thailand`);
+  if ((bm.total_buildings ?? 0) < 20_000_000)
+    problems.push(`buildings total ${bm.total_buildings} is below a nationwide count (~20M+)`);
+  if (!existsSync("public/data/buildings_density.png"))
+    problems.push("buildings_density.png missing");
+  notes.push(`buildings: ${(bm.total_buildings ?? 0).toLocaleString()} over bbox ${bm.grid_bbox?.map((v) => v.toFixed(1))}`);
+}
+
 // 2. Rain grid: nulls are legitimate (not yet fetched) but not everywhere.
 const gridPath = "public/data/wetness_grid.json";
 if (!existsSync(gridPath)) {

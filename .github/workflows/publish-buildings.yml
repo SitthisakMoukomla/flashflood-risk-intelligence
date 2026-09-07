@@ -1,0 +1,67 @@
+name: Publish building footprints to R2
+
+# Copies the buildings.pmtiles archive from a GitHub release into the R2
+# bucket the app reads. The archive is built locally (script 17, ~45 min
+# on a laptop, 1.9 GB) and attached to a release because that is the one
+# upload path that needs no R2 key on the laptop — this job holds the key
+# as a repo secret, the same way the SAR job does.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag carrying buildings.pmtiles"
+        required: true
+        default: "buildings-v3-20260907"
+
+concurrency:
+  group: publish-buildings
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (just the uploader)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            pipeline/scripts/r2_upload.py
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: pip install --quiet click boto3
+
+      - name: Fetch the archive from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ github.event.inputs.tag }}" \
+            --repo "${{ github.repository }}" --pattern buildings.pmtiles --dir pipeline/data/output
+          ls -l pipeline/data/output/buildings.pmtiles
+          # PMTiles v3 magic — refuse anything that is not the archive.
+          [ "$(head -c 7 pipeline/data/output/buildings.pmtiles)" = "PMTiles" ]
+
+      - name: Upload to R2
+        working-directory: pipeline
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+        run: python scripts/r2_upload.py data/output/buildings.pmtiles
+
+      - name: Verify the public URL serves ranges
+        env:
+          R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -r 0-6 "$R2_PUBLIC_BASE/buildings.pmtiles")
+          echo "range request → $code"
+          [ "$code" = "206" ]

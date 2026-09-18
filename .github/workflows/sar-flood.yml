@@ -11,11 +11,11 @@ name: Observed flood extent (Sentinel-1)
 # full national coverage, and the compositing step keeps the most recent
 # observation wherever passes overlap.
 #
-# Cadence: every 12 h. A full week is ~210 tiles and takes ~20 minutes,
-# so twice a day keeps the picture fresh without burning Actions minutes.
+# Cadence: once a day. A full week is ~210 tiles and takes ~50 minutes,
+# so a daily run keeps the picture fresh without burning Actions minutes.
 on:
   schedule:
-    - cron: "20 */12 * * *"
+    - cron: "20 18 * * *"
   workflow_dispatch:
     inputs:
       hours:
@@ -47,6 +47,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Cache pip downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-ubuntu-py312-sar-flood
+
       - name: Install deps
         run: pip install --quiet click numpy "rasterio>=1.4" "shapely>=2.0" certifi pillow pmtiles boto3
 
@@ -57,7 +63,7 @@ jobs:
           GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
           CPL_VSIL_CURL_ALLOWED_EXTENSIONS: ".tif"
           # The tile archive goes to object storage rather than git — it is
-          # ~13 MB rewritten twice a day. Without these the run still works
+          # ~13 MB rewritten once a day. Without these the run still works
           # and simply leaves the archive in public/data.
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

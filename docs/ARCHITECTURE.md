@@ -21,7 +21,6 @@ CHIRPS                        17_rain_chirps.py     wetness_grid.json      hex �
 Copernicus DEM + HydroSHEDS   15_susceptibility     susceptibility.tif     hex พื้นที่เสี่ยง
 Google Open Buildings         09_buildings_density  buildings_density.png  ความหนาแน่นบ้าน (z≤12)
 Google Open Buildings         17_buildings_tiles    buildings.pmtiles (R2) บ้านรายหลัง (z≥13)
-GADM                          01_aoi_mask.py        village_risk.geojson   ขอบเขตตำบล
 
 เรียกสดจากเบราว์เซอร์ (ไม่ผ่าน pipeline)
 สสน. ThaiWater API      →  สถานีฝน/น้ำท่า        (ไม่ต้องมี key)
@@ -34,7 +33,8 @@ Planetary Computer      →  ภาพเรดาร์ Sentinel-1   (ผ่า
 | อยากแก้ | ไฟล์ |
 |---|---|
 | หน้าตาแผนที่ เลเยอร์ ปุ่ม สี | `src/components/FloodMap.tsx` |
-| สูตรคำนวณความเสี่ยง | `src/lib/tambon.ts` → `computeLiveGrid()` |
+| สูตรคำนวณความเสี่ยง | `src/lib/grid.ts` → `computeLiveGrid()` |
+| แผง "ตรวจจุดนี้" + จุดเฝ้าระวัง | `src/lib/inspect.ts` (คำนวณ) · `InspectPanel` ใน `FloodMap.tsx` (หน้าตา) |
 | เกณฑ์ระดับน้ำเทียบตลิ่ง | `src/lib/maesai.ts` → `bankPercentColor()` |
 | หน้าเฝ้าระวังแม่สาย | `src/components/MaeSaiWatch.tsx` |
 | การตรวจจับน้ำท่วมจากดาวเทียม | `pipeline/scripts/14_sar_flood.py` |
@@ -49,7 +49,6 @@ Planetary Computer      →  ภาพเรดาร์ Sentinel-1   (ผ่า
 |---|---|---|---|
 | `sar_flood.pmtiles` | 13 MB | **Cloudflare R2** | cron ทุก 12 ชม. |
 | `sar_flood.geojson` | 3.5 MB | git (ไว้วิเคราะห์ ไม่ส่งให้เบราว์เซอร์) | cron ทุก 12 ชม. |
-| `village_risk.geojson` | 1.3 MB | git | รันมือเมื่อขอบเขตเปลี่ยน |
 | `maesai_log.jsonl` | 0.5 MB | git | cron ทุก 30 นาที |
 | `wetness_grid.json` | 0.1 MB | git | cron รายวัน |
 

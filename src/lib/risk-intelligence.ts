@@ -1,6 +1,6 @@
 // Domain types and copy for the Flashflood Risk Intelligence map.
-// Risk zones are no longer hard-coded — they are loaded from
-// /data/village_risk.geojson (663 subdistricts in 9 northern provinces).
+// Risk is read from the nationwide model grid (public/data/wetness_grid.json)
+// and drawn as an H3 hex surface; any point in Thailand can be inspected.
 
 export type SourceNote = {
   label: string;
@@ -12,19 +12,17 @@ export const productCopy = {
   generatedAt: "9 พ.ค. 2026",
   title: "Flashflood Risk Intelligence",
   subtitle:
-    "แผนที่คัดกรองตำบลเสี่ยงน้ำป่าใน 9 จังหวัดภาคเหนือ จาก hazard surface ที่คำนวณบน Google Earth Engine ทับด้วย rainfall trigger จาก radar API",
+    "แผนที่ความเสี่ยงน้ำป่าทั่วประเทศไทย จากภูมิประเทศ × ดินอิ่มน้ำ × ฝนตอนนี้ แตะจุดใดก็ได้เพื่อดูระดับความเสี่ยงและข้อมูลวัดจริงใกล้จุดนั้น",
   disclaimer:
     "แผนที่บอกระดับความเสี่ยงเชิงข้อมูล ไม่ใช่ประกาศภัยทางการ และไม่ใช่คำสั่งให้ดำเนินการใด ๆ การตัดสินใจเชิงปฏิบัติเป็นของหน่วยงานท้องถิ่น",
-  region: "ภาคเหนือ + สถานีทั่วประเทศ",
-  unitName: "ตำบล",
-  unitCount: 663,
+  region: "ทั่วประเทศ",
 };
 
 export type RiskTier = "severe" | "high" | "watch" | "low";
 
-// Thresholds calibrated to the actual AOI distribution of risk_p90_norm:
-// 9 northern provinces, GEE static export, May 2026.
-// p90 of distribution ≈ 0.55, p95 ≈ 0.6, max ≈ 0.69.
+// Thresholds on the live 0..1 value — the same cut points the hex
+// surface is coloured with (LIVE_BANDS in FloodMap), so a tier label and
+// the hex colour under it always agree.
 export const riskMeta: Record<
   RiskTier,
   { label: string; color: string; minNorm: number; tone: string }
@@ -33,7 +31,7 @@ export const riskMeta: Record<
     label: "เสี่ยงสูงสุด",
     color: "#d73027",
     minNorm: 0.55,
-    tone: "ตำบลที่อยู่ใน p95 บนสุดของ AOI — บอกระดับความเสี่ยง ไม่ใช่ประกาศภัย",
+    tone: "ระดับบนสุดของแผนที่ — บอกระดับความเสี่ยง ไม่ใช่ประกาศภัย",
   },
   high: {
     label: "เสี่ยงสูง",
@@ -64,32 +62,47 @@ export function tierFromNorm(norm: number): RiskTier {
 
 export const sourceNotes: SourceNote[] = [
   {
-    label: "Google Earth Engine — flashflood_north_2026",
-    href: "https://earthengine.google.com/",
-    note: "Hazard composite จาก SRTM slope, MERIT TWI, MODIS EVI, MCD64A1 burned area, ESA WorldCover built-up และ CHIRPS 60-day rain accumulation. Export 100 m COG.",
+    label: "HydroSHEDS + Copernicus DEM — ภูมิประเทศ",
+    href: "https://www.hydrosheds.org/",
+    note: "TWI, ระยะถึงลำน้ำ, ความสูง จาก HydroSHEDS 15″ และความชันจาก Copernicus DEM 90 ม. คำนวณทั้งประเทศ",
   },
   {
-    label: "GADM 4.1 — ขอบเขตตำบล",
-    href: "https://gadm.org/",
-    note: "ใช้ admin level 3 (ตำบล/แขวง) ของไทย กรอง 9 จังหวัดภาคเหนือ เป็น polygon สำหรับ zonal stats per ตำบล",
+    label: "CHIRPS + Open-Meteo — ฝน",
+    href: "https://www.chc.ucsb.edu/data/chirps",
+    note: "ฝนสะสม 7 วันจาก CHIRPS และฝนรายชั่วโมงจาก Open-Meteo บน grid 0.15° ทั่วประเทศ",
+  },
+  {
+    label: "สสน. ThaiWater — สถานีวัดฝนและระดับน้ำ",
+    href: "https://www.thaiwater.net/",
+    note: "ค่าวัดจริงจากสถานีโทรมาตร เรียกสดจากเบราว์เซอร์",
+  },
+  {
+    label: "Copernicus GFM — น้ำท่วมจาก Sentinel-1",
+    href: "https://global-flood.emergency.copernicus.eu/",
+    note: "พื้นที่น้ำท่วมตรวจพบจากเรดาร์ดาวเทียม รวม 7 วัน ตัดแหล่งน้ำถาวรออกด้วย JRC Global Surface Water",
+  },
+  {
+    label: "Google Open Buildings v3",
+    href: "https://sites.research.google/open-buildings/",
+    note: "รอยอาคาร confidence ≥ 0.7 ทั่วประเทศ (CC BY 4.0)",
   },
   {
     label: "RainViewer Weather Maps API",
     href: "https://www.rainviewer.com/api/weather-maps-api.html",
-    note: "Radar nowcast ใช้เป็น dynamic trigger overlay ทับ static susceptibility ไม่ใช้ key สำหรับ MVP",
+    note: "เรดาร์ฝนเคลื่อนไหว",
   },
   {
-    label: "OpenStreetMap",
+    label: "OpenStreetMap + Nominatim",
     href: "https://www.openstreetmap.org/copyright",
-    note: "Basemap พร้อม attribution",
+    note: "แผนที่พื้นฐาน ค้นหาสถานที่ และชื่อพื้นที่ของจุดที่แตะ",
   },
 ];
 
 export const methodSteps = [
-  "Hazard surface คำนวณบน GEE: slope + TWI + drainage proximity + EVI + DEM-low + burned + built + 60-day rain",
-  "Export 100 m COG (EPSG:4326) ครอบคลุม 9 จังหวัดภาคเหนือ",
-  "Zonal stats per ตำบล: mean / max / p75 / p90 / p95 ของ RISK band",
-  "Rescale risk เป็น 0..1 ตาม percentile ใน AOI (raster max ~0.59 ไม่ใช่ 1.0)",
-  "จัดอันดับ ตำบล ตาม p90 risk; แบ่งระดับ Severe / High / Watch / Low ตาม normalized score",
-  "Rainfall trigger จาก RainViewer ทับเป็น dynamic layer ฝั่งหน้าเว็บ",
+  "ความเสี่ยงจากภูมิประเทศ คำนวณทั้งประเทศจาก TWI, ความชัน, ระยะถึงลำน้ำ, ความสูง และพื้นที่สิ่งปลูกสร้าง",
+  "ดินอิ่มน้ำ = ฝนสะสม 7 วัน, ฝนตอนนี้ = ฝนรายชั่วโมง — ทั้งคู่บน grid 0.15° ทั่วประเทศ",
+  "ระดับตอนนี้ = ภูมิประเทศที่ถูกขยายด้วยดินอิ่มน้ำ บวกแรงกระตุ้นจากฝนตอนนี้ แล้วแบ่งเป็น 4 ระดับ",
+  "แสดงเป็น hex H3 ขนาด ~7 กม. จุดที่แตะจะอ่านระดับจาก hex ที่ครอบจุดนั้น (เส้นประบนแผนที่)",
+  "ข้อมูลวัดจริงใกล้จุด: สถานีระดับน้ำ ≤ 30 กม., สถานีฝน ≤ 20 กม., น้ำท่วมดาวเทียมรัศมี 5 กม., บ้านเรือนรัศมี 1 กม.",
+  "จุดเฝ้าระวัง = กลุ่ม hex ระดับเสี่ยงสูงขึ้นไปที่อยู่ห่างกันไม่เกิน 25 กม. รวมเป็น 1 จุด",
 ];

@@ -644,6 +644,10 @@ a { color: inherit; }
   }
 
   /* Mobile floating action cluster — pin above legend */
+  /* The sheet has its own close button; the FAB column would sit on top
+     of its text, so it steps aside while the sheet is open. */
+  .ff-shell.sheet-open .mobile-fab,
+  .ff-shell.sheet-open .leaflet-control-zoom { display: none; }
   .mobile-fab {
     position: fixed;
     right: 10px;

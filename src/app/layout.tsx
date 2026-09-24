@@ -16,9 +16,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Flashflood · เตือนภัยน้ำป่า ภาคเหนือ",
+  title: "Flashflood · เตือนภัยน้ำป่าทั่วประเทศ",
   description:
-    "เตือนภัยน้ำป่าระดับตำบลใน 9 จังหวัดภาคเหนือ — ผสาน hazard surface จาก Google Earth Engine กับฝนสะสม + radar API สำหรับเตือนภัยตามจริง",
+    "แผนที่ความเสี่ยงน้ำป่าทั่วประเทศไทย — ภูมิประเทศ × ดินอิ่มน้ำ × ฝนตอนนี้ แตะจุดใดก็ได้เพื่อดูระดับความเสี่ยง สถานีวัดน้ำใกล้เคียง และน้ำท่วมจากดาวเทียม",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

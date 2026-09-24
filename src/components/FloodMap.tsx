@@ -24,7 +24,6 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
-import type { GeoJSON as LeafletGeoJSON } from "leaflet";
 import { cellToBoundary, cellToLatLng, polygonToCells } from "h3-js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -40,16 +39,19 @@ import {
   bankPercentLabel,
   MAESAI_CHAIN,
 } from "@/lib/maesai";
+import { computeLiveGrid, layerModes, type LayerMode, type WetnessGrid } from "@/lib/grid";
 import {
-  buildTambonRows,
-  computeLiveGrid,
-  layerModes,
-  type LayerMode,
-  type TambonCollection,
-  type TambonRow,
-  type WetnessGrid,
-  type WetnessPayload,
-} from "@/lib/tambon";
+  buildingsNear,
+  floodNear,
+  hotspots as findHotspots,
+  nearest,
+  riskAt,
+  HEX_AREA_KM2,
+  type FloodNear,
+  type Hotspot,
+  type HotspotSummary,
+  type PointRisk,
+} from "@/lib/inspect";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -91,7 +93,7 @@ type BuildingsTilesMeta = {
   };
 };
 
-type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported" | "outside";
+type GeoStatus = "idle" | "asking" | "granted" | "denied" | "unsupported";
 
 /** A place from the Nominatim proxy (/api/geocode). */
 type GeoPlace = {
@@ -105,6 +107,16 @@ type GeoPlace = {
   tambon: string | null;
   amphoe: string | null;
   province: string | null;
+};
+
+/** A spot the user asked about — their GPS fix, a map tap, a search hit
+ *  or a hotspot from the list. */
+type InspectPoint = {
+  lat: number;
+  lng: number;
+  source: "user" | "click" | "search" | "hotspot";
+  /** Place we already know (a search hit) — skips the reverse geocode. */
+  place?: GeoPlace;
 };
 
 type ThaiWaterStation = {
@@ -311,23 +323,6 @@ const LABELS_LAYER = {
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-const PROVINCE_NAMES: Record<string, string> = {
-  ChiangMai: "เชียงใหม่",
-  ChiangRai: "เชียงราย",
-  Lampang: "ลำปาง",
-  Lamphun: "ลำพูน",
-  MaeHongSon: "แม่ฮ่องสอน",
-  Nan: "น่าน",
-  Phayao: "พะเยา",
-  Phrae: "แพร่",
-  Uttaradit: "อุตรดิตถ์",
-};
-const thaiName = (slug: string) => PROVINCE_NAMES[slug] ?? slug;
-
-/** Thai อำเภอ name when GADM supplied one (NL_NAME_2), else the romanised
- *  NAME_2. GADM 4.1 has no Thai tambon names, so NAME_3 stays romanised. */
-const amphoeName = (p: TambonRow["feature"]["properties"]) => p.NL_NAME_2 ?? p.NAME_2;
-
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("th-TH").format(value);
 }
@@ -377,28 +372,6 @@ const TIER_PILL: Record<RiskTier, string> = {
   low: "tier-low",
 };
 
-function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0];
-    const yi = ring[i][1];
-    const xj = ring[j][0];
-    const yj = ring[j][1];
-    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-function pointInGeom(lng: number, lat: number, geom: GeoJSON.Polygon | GeoJSON.MultiPolygon): boolean {
-  const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
-  for (const poly of polys) {
-    if (!pointInRing(lng, lat, poly[0])) continue;
-    let inHole = false;
-    for (let i = 1; i < poly.length; i++) if (pointInRing(lng, lat, poly[i])) { inHole = true; break; }
-    if (!inHole) return true;
-  }
-  return false;
-}
-
 type HexBand = { min: number; color: string; fill: number };
 
 // ─── H3 hexagon risk surface ───────────────────────────────────────
@@ -411,7 +384,7 @@ function hexResForZoom(zoom: number): number {
   return zoom <= 7 ? 5 : 6;
 }
 
-type HexCell = { boundary: [number, number][]; gx: number; gy: number };
+type HexCell = { boundary: [number, number][]; gx: number; gy: number; lat: number; lng: number };
 
 function shade(hex: string, f: number): string {
   const v = parseInt(hex.slice(1), 16);
@@ -475,7 +448,7 @@ function buildHexCells(grid: WetnessGrid, res: number): HexCell[] {
     const gx = ((lng - w) / (e - w)) * (grid.cols - 1);
     const gy = ((n - lat) / (n - s)) * (grid.rows - 1);
     if (mask && bilinearSample(mask, grid.cols, grid.rows, gx, gy) <= 0.02) continue;
-    out.push({ boundary: cellToBoundary(c) as [number, number][], gx, gy });
+    out.push({ boundary: cellToBoundary(c) as [number, number][], gx, gy, lat, lng });
   }
   return out;
 }
@@ -540,11 +513,22 @@ const WETNESS_BANDS: HexBand[] = [
   { min: 0.63, color: "#1e2978", fill: 0.8 },
 ];
 
-function scoreOfRow(row: TambonRow, mode: LayerMode | null): number {
-  if (mode === "wetness") return row.wetnessNorm;
-  if (mode === "static") return row.staticNorm;
-  // Default & live both rank by liveNorm — that's the operational ranking.
-  return row.liveNorm;
+/** Centre the map so a spot sits where the user can see it. On phones the
+ *  bottom sheet covers the lower ~60 % of the screen, so the spot is placed
+ *  in the strip between the header and the sheet rather than at the centre. */
+function revealPoint(map: Leaflet.Map, lat: number, lng: number, zoom?: number) {
+  const z = zoom ?? map.getZoom();
+  const phone = window.matchMedia("(max-width: 820px)").matches;
+  let target: Leaflet.LatLngExpression = [lat, lng];
+  if (phone) {
+    const h = map.getSize().y;
+    const visibleTop = 120; // hero + mode strip
+    const sheetTop = h * 0.4; // .drawer-mobile max-height: 60vh
+    const offsetY = h / 2 - Math.max(visibleTop + 40, (visibleTop + sheetTop) / 2);
+    target = map.unproject(map.project([lat, lng], z).add([0, offsetY]), z);
+  }
+  if (zoom !== undefined && zoom !== map.getZoom()) map.flyTo(target, z, { duration: 0.7 });
+  else if (phone) map.panTo(target, { animate: true });
 }
 
 // ─── Inline glyph for tier badge (visual is an inset !/·/✓) ─────
@@ -560,7 +544,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const leafletRef = useRef<typeof Leaflet | null>(null);
-  const polyLayerRef = useRef<LeafletGeoJSON | null>(null);
+  const inspectLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const wetnessOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
   const staticOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
   const liveOverlayRef = useRef<Leaflet.LayerGroup | null>(null);
@@ -587,8 +571,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   // until ~z=14 where buildings start being ≥1 px and the polygon layer
   // earns its place.
 
-  const [tambonFC, setTambonFC] = useState<TambonCollection | null>(null);
-  const [wetness, setWetness] = useState<WetnessPayload | null>(null);
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [buildingsTilesMeta, setBuildingsTilesMeta] = useState<BuildingsTilesMeta | null>(null);
@@ -627,7 +609,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [geoResults, setGeoResults] = useState<GeoPlace[] | null>(null);
   const [geoSearching, setGeoSearching] = useState(false);
 
-  const [selectedGid, setSelectedGid] = useState<string | null>(null);
+  const [inspect, setInspect] = useState<InspectPoint | null>(null);
+  // Async lookups for the inspected spot, tagged with the spot they answer
+  // so a slow reply for an earlier tap can never be shown for the current one.
+  const [placeRes, setPlaceRes] = useState<{ key: string; value: GeoPlace | null } | null>(null);
+  const [floodRes, setFloodRes] = useState<{ key: string; value: FloodNear | null } | null>(null);
+  const [buildingsRes, setBuildingsRes] = useState<{ key: string; value: number | null } | null>(null);
+  const [hotspotNames, setHotspotNames] = useState<Record<string, GeoPlace | null>>({});
   // Drawer defaults to closed on phones (the bottom sheet eats too much
   // map otherwise). SSR always renders open; a post-mount effect closes it
   // on small screens — reading matchMedia in the useState initializer
@@ -648,16 +636,9 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     let active = true;
     (async () => {
       try {
-        const [vrRes, wRes, gRes] = await Promise.all([
-          fetch("/data/village_risk.geojson"),
-          fetch("/data/wetness_7d.json"),
-          fetch("/data/wetness_grid.json"),
-        ]);
-        if (!vrRes.ok) throw new Error(`village_risk.geojson ${vrRes.status}`);
-        const fc = (await vrRes.json()) as TambonCollection;
-        if (active) setTambonFC(fc);
-        if (wRes.ok && active) setWetness((await wRes.json()) as WetnessPayload);
-        if (gRes.ok && active) setGrid((await gRes.json()) as WetnessGrid);
+        const gRes = await fetch("/data/wetness_grid.json");
+        if (!gRes.ok) throw new Error(`wetness_grid.json ${gRes.status}`);
+        if (active) setGrid((await gRes.json()) as WetnessGrid);
         try {
           const bRes = await fetch("/data/buildings_density_meta.json");
           if (bRes.ok && active) setBuildingsMeta((await bRes.json()) as BuildingsOverlayMeta);
@@ -809,26 +790,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     );
   }, []);
 
-  // 3) Build tambon rows
-  const rows = useMemo(
-    () => (tambonFC ? buildTambonRows(tambonFC, wetness, grid) : []),
-    [tambonFC, wetness, grid],
+  // 3) Risk at the user's own position — drives the hero and the pin colour.
+  const userRisk = useMemo<PointRisk | null>(
+    () => (grid && userLoc ? riskAt(grid, userLoc[1], userLoc[0]) : null),
+    [grid, userLoc],
   );
 
-  const sortedRows = useMemo(
-    () => [...rows].sort((a, b) => scoreOfRow(b, layerMode) - scoreOfRow(a, layerMode)),
-    [rows, layerMode],
-  );
-
-  const userRow = useMemo(() => {
-    if (!userLoc || rows.length === 0) return null;
-    const [lng, lat] = userLoc;
-    for (const row of rows) if (pointInGeom(lng, lat, row.feature.geometry)) return row;
-    return null;
-  }, [userLoc, rows]);
-
-  // Reverse-geocode the user's coordinate so we can name where they
-  // actually are — including when that's outside our 9-province coverage.
+  // Reverse-geocode the user's coordinate so the hero can name where they are.
   useEffect(() => {
     if (!userLoc) {
       setUserPlace(null);
@@ -845,30 +813,16 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     return () => ctrl.abort();
   }, [userLoc]);
 
+  // Inspect the user's own spot once we have it, unless they already
+  // tapped somewhere else.
   useEffect(() => {
-    if (geoStatus === "granted" && userLoc && rows.length > 0 && !userRow) {
-      setGeoStatus("outside");
-    }
-  }, [geoStatus, userLoc, rows.length, userRow]);
+    if (userLoc) setInspect((cur) => cur ?? { lat: userLoc[1], lng: userLoc[0], source: "user" });
+  }, [userLoc]);
 
-  // Auto-select user's tambon when first found
-  useEffect(() => {
-    if (userRow && !selectedGid) setSelectedGid(userRow.feature.properties.GID_3);
-  }, [userRow, selectedGid]);
-
-  const selectedRow = useMemo(() => {
-    if (!selectedGid) return userRow ?? sortedRows[0] ?? null;
-    return rows.find((r) => r.feature.properties.GID_3 === selectedGid) ?? userRow ?? sortedRows[0] ?? null;
-  }, [rows, sortedRows, selectedGid, userRow]);
-
-  // When the user's coordinate falls outside the 9 provinces we have no
-  // tambon for them. Showing `selectedRow` there would name a random
-  // high-risk tambon hundreds of km away — the hero must say "outside
-  // coverage" instead.
-  const outsideCoverage = geoStatus === "outside";
-  const heroRow = outsideCoverage ? null : (userRow ?? selectedRow);
-  const heroTier: RiskTier = heroRow?.liveTier ?? "low";
-  const isHighOrSevere = heroTier === "high" || heroTier === "severe";
+  const inspectRisk = useMemo<PointRisk | null>(
+    () => (grid && inspect ? riskAt(grid, inspect.lat, inspect.lng) : null),
+    [grid, inspect],
+  );
 
   // Search results (only when query)
   // Search is powered by OpenStreetMap Nominatim (Thailand-only) via our
@@ -935,16 +889,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     .filter((c) => c.code === "MYA001" || c.code === "MYA002")
     .filter((c) => (c.deltaCm ?? 0) >= 1).length;
 
-  /** Which tambon (if any) contains a coordinate. */
-  const tambonAt = useMemo(
-    () =>
-      (lng: number, lat: number): TambonRow | null => {
-        for (const row of rows) if (pointInGeom(lng, lat, row.feature.geometry)) return row;
-        return null;
-      },
-    [rows],
-  );
-
   // ─── Map setup ────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -963,6 +907,13 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       map.on("zoomend", () => setZoom(map.getZoom()));
+      // Any tap on the map inspects that spot. Station dots let the click
+      // bubble, so tapping a gauge inspects the ground under it too.
+      map.on("click", (e: Leaflet.LeafletMouseEvent) => {
+        setInspect({ lat: e.latlng.lat, lng: e.latlng.lng, source: "click" });
+        setDrawerOpen(true);
+        revealPoint(map, e.latlng.lat, e.latlng.lng);
+      });
       mapRef.current = map;
       setIsMapReady(true);
     })();
@@ -970,7 +921,6 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       cancelled = true;
       mapRef.current?.remove();
       mapRef.current = null;
-      polyLayerRef.current = null;
       setIsMapReady(false);
     };
   }, []);
@@ -1027,8 +977,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }
     if (!userLoc) return;
     const [lng, lat] = userLoc;
-    const tier = userRow?.liveTier ?? "low";
-    const color = riskMeta[tier].color;
+    const color = userRisk?.tier ? riskMeta[userRisk.tier].color : "#40e0bd";
     const group = L.layerGroup();
     L.circleMarker([lat, lng], {
       radius: 18,
@@ -1049,93 +998,44 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     }).addTo(group);
     group.addTo(map);
     userMarkerRef.current = group;
-  }, [isMapReady, userLoc, userRow]);
+  }, [isMapReady, userLoc, userRisk]);
 
-  // Tambon click layer (transparent — only for hover/click hit testing)
+  // The inspected spot: its hex outlined (the cell the panel reads from)
+  // and a pin on the exact coordinate.
   useEffect(() => {
     const L = leafletRef.current;
     const map = mapRef.current;
-    if (!L || !map || !isMapReady || rows.length === 0) return;
-
-    if (polyLayerRef.current) {
-      polyLayerRef.current.remove();
-      polyLayerRef.current = null;
+    if (!L || !map || !isMapReady) return;
+    if (inspectLayerRef.current) {
+      inspectLayerRef.current.removeFrom(map);
+      inspectLayerRef.current = null;
     }
-
-    const fc: GeoJSON.FeatureCollection = {
-      type: "FeatureCollection",
-      features: rows.map((r) => r.feature),
-    };
-
-    const rowByGid = new Map(rows.map((r) => [r.feature.properties.GID_3, r]));
-
-    polyLayerRef.current = L.geoJSON(fc as never, {
-      style: (feature) => {
-        const gid = feature?.properties?.GID_3 as string | undefined;
-        const isSelected = gid === selectedGid;
-        if (isSelected) {
-          return {
-            stroke: true,
-            fill: true,
-            fillOpacity: 0.16,
-            fillColor: "#ffffff",
-            color: "#ffffff",
-            weight: 2.6,
-            opacity: 0.95,
-          };
-        }
-        // Only Severe tambon carry a coloured outline — everything else
-        // stays invisible so the basemap is readable. User can still
-        // click any polygon (Leaflet canvas hit-test on geometry) and
-        // hover paints a transient white outline for orientation.
-        const row = gid ? rowByGid.get(gid) : undefined;
-        const tier = row?.liveTier ?? "low";
-        if (tier !== "severe") {
-          return { stroke: false, fill: false };
-        }
-        return {
-          stroke: true,
-          fill: false,
-          color: riskMeta.severe.color,
-          weight: 1.6,
-          opacity: 0.95,
-        };
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties as TambonRow["feature"]["properties"];
-        const path = layer as Leaflet.Path & { feature?: { properties?: { GID_3?: string } } };
-        layer.on("click", () => {
-          setSelectedGid(p.GID_3);
-          setDrawerOpen(true);
-        });
-        layer.on("mouseover", () => {
-          if (path.feature?.properties?.GID_3 === selectedGid) return;
-          const gid = path.feature?.properties?.GID_3;
-          const r = gid ? rowByGid.get(gid) : undefined;
-          const isSevere = r?.liveTier === "severe";
-          // All tambon get a faint hover ring so they read as clickable.
-          // Severe tambon already have a red outline — bump theirs to
-          // a thicker white so the contrast is obvious.
-          path.setStyle({
-            stroke: true,
-            fill: false,
-            color: isSevere ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.55)",
-            weight: isSevere ? 1.8 : 0.9,
-            opacity: 1,
-          });
-        });
-        layer.on("mouseout", () => {
-          if (path.feature?.properties?.GID_3 === selectedGid) return;
-          polyLayerRef.current?.resetStyle(layer as Leaflet.Path);
-        });
-        layer.bindTooltip(`<b>${p.NAME_3}</b> · อ.${amphoeName(p)}<br/>จ.${thaiName(p.NAME_1)}`, {
-          direction: "top",
-          sticky: true,
-          opacity: 0.9,
-        });
-      },
-    }).addTo(map);
-  }, [isMapReady, rows, selectedGid]);
+    if (!inspect || !inspectRisk) return;
+    const group = L.layerGroup();
+    if (inspectRisk.inside) {
+      L.polygon(cellToBoundary(inspectRisk.cell) as [number, number][], {
+        interactive: false,
+        fill: false,
+        color: "#ffffff",
+        weight: 2.4,
+        opacity: 0.95,
+        dashArray: "5 4",
+      }).addTo(group);
+    }
+    // The user's own spot already carries the location pin.
+    if (inspect.source !== "user") {
+      L.circleMarker([inspect.lat, inspect.lng], {
+        radius: 6,
+        color: "#07131a",
+        weight: 2,
+        fillColor: "#ffffff",
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(group);
+    }
+    group.addTo(map);
+    inspectLayerRef.current = group;
+  }, [isMapReady, inspect, inspectRisk]);
 
   // Hexes are shared by all three modes — computed per grid payload and
   // per H3 resolution, cached so crossing the zoom threshold is instant.
@@ -1585,26 +1485,143 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     };
   }, [isMapReady, showBuildings, buildingsTilesMeta]);
 
+  // ─── Point inspection ────────────────────────────────────────
+  const inspectKey = inspect ? `${inspect.lat.toFixed(5)},${inspect.lng.toFixed(5)}` : null;
+
+  // Name of the inspected spot. Rounded to ~100 m so nearby taps share the
+  // proxy's cache, and debounced to respect Nominatim's 1 req/s policy.
+  const needsPlaceLookup = inspect !== null && !inspect.place && inspect.source !== "user";
+  useEffect(() => {
+    if (!inspect || !inspectKey || !needsPlaceLookup) return;
+    const ctrl = new AbortController();
+    const t = window.setTimeout(() => {
+      fetch(`/api/geocode?lat=${inspect.lat.toFixed(3)}&lon=${inspect.lng.toFixed(3)}`, { signal: ctrl.signal })
+        .then((r) => r.json() as Promise<{ result?: GeoPlace | null }>)
+        .then((p) => setPlaceRes({ key: inspectKey, value: p.result ?? null }))
+        .catch(() => {
+          /* the panel falls back to coordinates */
+        });
+    }, 400);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(t);
+    };
+  }, [inspect, inspectKey, needsPlaceLookup]);
+  const inspectPlace: GeoPlace | null = !inspect
+    ? null
+    : (inspect.place ??
+      (inspect.source === "user" ? userPlace : placeRes?.key === inspectKey ? placeRes.value : null));
+
+  // Observed flood within 5 km, read from the same tiles the flood layer draws.
+  const floodArchiveRef = useRef<{ url: string; archive: import("pmtiles").PMTiles } | null>(null);
+  useEffect(() => {
+    const url = sarFloodMeta?.tiles ? sarFloodMeta.tiles.url || `/data/${sarFloodMeta.tiles.file}` : null;
+    if (!inspect || !inspectKey || !inspectRisk?.inside || !url) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (floodArchiveRef.current?.url !== url) {
+          const { PMTiles } = await import("pmtiles");
+          floodArchiveRef.current = { url, archive: new PMTiles(url) };
+        }
+        const res = await floodNear(floodArchiveRef.current.archive, inspect.lat, inspect.lng, 5);
+        if (!cancelled) setFloodRes({ key: inspectKey, value: res });
+      } catch {
+        if (!cancelled) setFloodRes({ key: inspectKey, value: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inspect, inspectKey, inspectRisk?.inside, sarFloodMeta]);
+  const inspectFlood: FloodNear | null | "loading" =
+    !inspectRisk?.inside || !sarFloodMeta?.tiles
+      ? null
+      : floodRes?.key === inspectKey
+        ? floodRes.value
+        : "loading";
+
+  // Buildings within 1 km, counted from the footprint tiles.
+  const buildingsCacheRef = useRef<{ url: string; cache: import("protomaps-leaflet").TileCache } | null>(null);
+  useEffect(() => {
+    const t = buildingsTilesMeta?.tiles;
+    const url = t ? t.url || `/data/${t.file}` : null;
+    if (!inspect || !inspectKey || !inspectRisk?.inside || !t || !url) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (buildingsCacheRef.current?.url !== url) {
+          const { TileCache, PmtilesSource } = await import("protomaps-leaflet");
+          // tileSize 256: feature coordinates come back in 256 px tile space.
+          buildingsCacheRef.current = { url, cache: new TileCache(new PmtilesSource(url, false), 256) };
+        }
+        const n = await buildingsNear(buildingsCacheRef.current.cache, t.layer, inspect.lat, inspect.lng, 1);
+        if (!cancelled) setBuildingsRes({ key: inspectKey, value: n });
+      } catch {
+        if (!cancelled) setBuildingsRes({ key: inspectKey, value: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inspect, inspectKey, inspectRisk?.inside, buildingsTilesMeta]);
+  const inspectBuildings: number | null | "loading" =
+    !inspectRisk?.inside || !buildingsTilesMeta?.tiles
+      ? null
+      : buildingsRes?.key === inspectKey
+        ? buildingsRes.value
+        : "loading";
+
+  const stationPos = (s: { station: { tele_station_lat: number; tele_station_long: number } }) =>
+    [s.station.tele_station_lat, s.station.tele_station_long] as [number, number];
+  const inspectWater = useMemo(
+    () => (inspect ? nearest(waterStations, stationPos, inspect.lat, inspect.lng, 30, 3) : []),
+    [inspect, waterStations],
+  );
+  const inspectRain = useMemo(
+    () => (inspect ? nearest(rainStations, stationPos, inspect.lat, inspect.lng, 20, 1)[0] ?? null : null),
+    [inspect, rainStations],
+  );
+
+  // ─── Hotspots (replaces the per-tambon ranking) ───────────────
+  const hotspotSummary = useMemo<HotspotSummary | null>(
+    () => (grid ? findHotspots(grid, buildHexCells(grid, 6)) : null),
+    [grid],
+  );
+  const hotspotList = useMemo<Hotspot[]>(() => hotspotSummary?.hotspots ?? [], [hotspotSummary]);
+  const hotspotKey = (h: { lat: number; lng: number }) => `${h.lat.toFixed(2)},${h.lng.toFixed(2)}`;
+
+  // Name the top hotspots one at a time — Nominatim allows 1 req/s.
+  useEffect(() => {
+    const todo = hotspotList.slice(0, 6).filter((h) => !(hotspotKey(h) in hotspotNames));
+    if (todo.length === 0) return;
+    const ctrl = new AbortController();
+    const h = todo[0];
+    const t = window.setTimeout(() => {
+      fetch(`/api/geocode?lat=${h.lat.toFixed(3)}&lon=${h.lng.toFixed(3)}`, { signal: ctrl.signal })
+        .then((r) => r.json() as Promise<{ result?: GeoPlace | null }>)
+        .then((p) => setHotspotNames((m) => ({ ...m, [hotspotKey(h)]: p.result ?? null })))
+        .catch(() => {
+          if (!ctrl.signal.aborted) setHotspotNames((m) => ({ ...m, [hotspotKey(h)]: null }));
+        });
+    }, 1100);
+    return () => {
+      ctrl.abort();
+      window.clearTimeout(t);
+    };
+  }, [hotspotList, hotspotNames]);
+
+
   // ─── Actions ─────────────────────────────────────────────────
-  const flyToTambon = (gid: string) => {
-    setSelectedGid(gid);
+  const inspectAt = (pt: InspectPoint, zoom?: number) => {
+    setInspect(pt);
     setDrawerOpen(true);
     const map = mapRef.current;
-    const layer = polyLayerRef.current;
-    if (!map || !layer) return;
-    layer.eachLayer((l) => {
-      const fid = (l as unknown as { feature?: { properties?: { GID_3?: string } } }).feature?.properties?.GID_3;
-      if (fid === gid) {
-        map.flyTo((l as Leaflet.GeoJSON).getBounds().getCenter(), 11, { duration: 0.6 });
-      }
-    });
+    if (map) revealPoint(map, pt.lat, pt.lng, zoom !== undefined ? Math.max(zoom, map.getZoom()) : undefined);
   };
 
-  /** Fly to a Nominatim result and select the tambon that contains it (if
-   *  the place falls inside our 9-province coverage). */
+  /** Fly to a Nominatim result and inspect it. */
   const flyToPlace = (place: GeoPlace) => {
-    const map = mapRef.current;
-    if (!map) return;
     // Villages/points deserve a closer look than provinces.
     const zoom =
       place.kind === "village" || place.kind === "hamlet" || place.kind === "town"
@@ -1612,12 +1629,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
         : place.kind === "county" || place.kind === "district"
           ? 11
           : 9;
-    map.flyTo([place.lat, place.lon], zoom, { duration: 0.8 });
-    const hit = tambonAt(place.lon, place.lat);
-    if (hit) {
-      setSelectedGid(hit.feature.properties.GID_3);
-      setDrawerOpen(true);
-    }
+    inspectAt({ lat: place.lat, lng: place.lon, source: "search", place }, zoom);
   };
 
   const flyToUser = () => {
@@ -1631,7 +1643,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           (pos) => {
             setUserLoc([pos.coords.longitude, pos.coords.latitude]);
             setGeoStatus("granted");
-            map.flyTo([pos.coords.latitude, pos.coords.longitude], 13, { duration: 0.7 });
+            inspectAt({ lat: pos.coords.latitude, lng: pos.coords.longitude, source: "user" }, 13);
           },
           () => setGeoStatus("denied"),
           { enableHighAccuracy: false, maximumAge: 5 * 60_000, timeout: 10_000 },
@@ -1640,25 +1652,21 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       return;
     }
     const [lng, lat] = userLoc;
-    map.flyTo([lat, lng], 13, { duration: 0.7 });
-    if (userRow) setSelectedGid(userRow.feature.properties.GID_3);
+    inspectAt({ lat, lng, source: "user" }, 13);
   };
-
-  // Top-N risk list for drawer
-  const topRiskList = useMemo(() => sortedRows.slice(0, 5), [sortedRows]);
 
   // ─── Render ──────────────────────────────────────────────────
   return (
-    <div className="ff-shell">
+    <div className={`ff-shell ${drawerOpen ? "sheet-open" : ""}`}>
       <div className="ff-map" ref={mapElementRef} />
 
       {/* Top hero ribbon */}
       <HeroRibbon
-        row={heroRow}
-        userRow={userRow}
+        userRisk={userRisk}
         status={geoStatus}
         userPlace={userPlace}
-        outsideCoverage={outsideCoverage}
+        national={hotspotSummary}
+        gridReady={grid !== null}
         searchQ={searchQ}
         onSearchChange={setSearchQ}
         geoResults={geoResults}
@@ -1923,17 +1931,29 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       </div>
 
       {/* Right drawer */}
-      {drawerOpen && selectedRow ? (
-        <Drawer
-          row={selectedRow}
-          isUser={selectedRow === userRow}
+      {drawerOpen ? (
+        <InspectPanel
+          point={inspect}
+          risk={inspectRisk}
+          place={inspectPlace}
+          flood={inspectFlood}
+          floodWindowDays={sarFloodMeta ? Math.round(sarFloodMeta.window_hours / 24) : null}
+          buildings={inspectBuildings}
+          water={inspectWater}
+          rain={inspectRain}
+          rainWindowEnd={grid?.rain_window_end ?? null}
+          hotspots={hotspotList.slice(0, 6)}
+          hotspotNames={hotspotNames}
+          hotspotKey={hotspotKey}
+          onPickHotspot={(h) =>
+            inspectAt({ lat: h.lat, lng: h.lng, source: "hotspot", place: hotspotNames[hotspotKey(h)] ?? undefined }, 10)
+          }
+          onClear={() => setInspect(null)}
           onClose={() => setDrawerOpen(false)}
           methodOpen={methodOpen}
           onToggleMethod={() => setMethodOpen((v) => !v)}
           methodSteps={methodSteps}
           sources={sources}
-          topRiskList={topRiskList}
-          onPickRow={(gid) => flyToTambon(gid)}
         />
       ) : null}
 
@@ -2036,18 +2056,18 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
               className="sw"
               style={{
                 background: "transparent",
-                border: `2px solid ${riskMeta.severe.color}`,
+                border: "2px dashed #ffffff",
                 width: 14,
                 height: 14,
               }}
             />
-            ขอบแดง = ตำบลเสี่ยงสูงสุดตอนนี้
+            เส้นประ = จุดที่กำลังตรวจ (แตะแผนที่)
           </span>
           <span className="legend-meta">
             {refreshedAt
               ? `อัปเดต ${formatTimeBKK(refreshedAt.toISOString())}`
-              : wetness
-                ? `ดิน ${formatTimeBKK(wetness.generated_at)}`
+              : grid
+                ? `ฝน ${formatTimeBKK(grid.generated_at)}`
                 : "—"}
             {rainLayer ? ` · เรดาร์ ${formatTimeBKK(rainLayer.frameTime)}` : ""}
           </span>
@@ -2170,7 +2190,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           onClick={() => setDrawerOpen((v) => !v)}
           className={drawerOpen ? "on" : ""}
           aria-label="เปิด/ปิดรายละเอียด"
-          title="รายละเอียดตำบล"
+          title="รายละเอียดจุดที่เลือก"
         >
           <Info size={18} />
         </button>
@@ -2560,11 +2580,11 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
 // ─── HeroRibbon ──────────────────────────────────────────────────
 
 function HeroRibbon({
-  row,
-  userRow,
+  userRisk,
   status,
   userPlace,
-  outsideCoverage,
+  national,
+  gridReady,
   searchQ,
   onSearchChange,
   geoResults,
@@ -2573,11 +2593,11 @@ function HeroRibbon({
   loadError,
   copy,
 }: {
-  row: TambonRow | null;
-  userRow: TambonRow | null;
+  userRisk: PointRisk | null;
   status: GeoStatus;
   userPlace: GeoPlace | null;
-  outsideCoverage: boolean;
+  national: HotspotSummary | null;
+  gridReady: boolean;
   searchQ: string;
   onSearchChange: (v: string) => void;
   geoResults: GeoPlace[] | null;
@@ -2586,18 +2606,32 @@ function HeroRibbon({
   loadError: string | null;
   copy: typeof productCopy;
 }) {
-  const tier: RiskTier = row?.liveTier ?? "low";
-  const action = tierActionTH(tier);
-  const pulseClass = tier === "high" || tier === "severe" ? "pulse" : "";
-  const isUser = row && userRow && row.feature.properties.GID_3 === userRow.feature.properties.GID_3;
-  const liveLabel = isUser ? "บ้านคุณอยู่ที่" : "ตำบลที่เลือก";
+  // The user's own spot when we have it and it is inside the country;
+  // otherwise a national summary — never some other place's risk.
+  const own = userRisk?.inside ? userRisk : null;
+  const ownTier = own ? (own.tier ?? own.staticTier) : null;
+  const nationalTier: RiskTier = !national
+    ? "low"
+    : national.severeKm2 > 0
+      ? "severe"
+      : national.highKm2 > 0
+        ? "high"
+        : "low";
+  // Rounded to the nearest hundred km²: the hexes are ~36 km² each, so
+  // anything finer would be false precision.
+  const km2 = (v: number) => `~${formatNumber(Math.round(v / 100) * 100)} ตร.กม.`;
+  const tier: RiskTier = ownTier ?? nationalTier;
+  // Pulse only for the user's own spot — a national count is context, not an alarm.
+  const pulseClass = own && (tier === "high" || tier === "severe") ? "pulse" : "";
 
   const statusMsg =
     status === "denied"
       ? "ไม่ได้รับอนุญาตเข้าถึงตำแหน่ง"
       : status === "unsupported"
         ? "เบราว์เซอร์ไม่รองรับ GPS"
-        : null;
+        : userRisk && !userRisk.inside
+          ? "ตำแหน่งคุณอยู่นอกประเทศไทย"
+          : null;
 
   return (
     <div
@@ -2640,30 +2674,25 @@ function HeroRibbon({
 
         {/* Risk text + tier */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, flexWrap: "nowrap" }}>
-          {row ? (
+          {own && ownTier ? (
             <>
               <span style={{ display: "flex", alignItems: "center", flex: "none" }}>
                 <MapPin size={16} style={{ color: "var(--accent)" }} />
                 <span
                   className="hero-locate-label"
-                  style={{
-                    color: "var(--ink-2)",
-                    fontSize: 13,
-                    whiteSpace: "nowrap",
-                    marginLeft: 6,
-                  }}
+                  style={{ color: "var(--ink-2)", fontSize: 13, whiteSpace: "nowrap", marginLeft: 6 }}
                 >
-                  {liveLabel}
+                  ตำแหน่งคุณ
                 </span>
               </span>
               <span className="hero-tambon" style={{ fontSize: 15.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: "1 1 auto", minWidth: 0 }}>
-                ตำบล{row.feature.properties.NAME_3}
-                <span style={{ color: "var(--ink-2)", fontWeight: 500 }}>
-                  {" "}อ.{amphoeName(row.feature.properties)} · จ.{thaiName(row.feature.properties.NAME_1)}
-                </span>
+                {userPlace ? userPlace.label : "กำลังหาชื่อพื้นที่…"}
+                {userPlace?.detail ? (
+                  <span style={{ color: "var(--ink-2)", fontWeight: 500 }}> · {userPlace.detail}</span>
+                ) : null}
               </span>
-              <span className={`tier ${TIER_PILL[tier]} hero-tier-pill`} style={{ flex: "none" }}>
-                {TIER_TH[tier]}
+              <span className={`tier ${TIER_PILL[ownTier]} hero-tier-pill`} style={{ flex: "none" }}>
+                {TIER_TH[ownTier]}
               </span>
               <span
                 className="hero-action"
@@ -2677,34 +2706,41 @@ function HeroRibbon({
                   textOverflow: "ellipsis",
                 }}
               >
-                · {action}
+                · {own.tier ? tierActionTH(ownTier) : "ยังไม่มีข้อมูลฝนบริเวณนี้ — แสดงเฉพาะภูมิประเทศ"}
               </span>
             </>
-          ) : outsideCoverage ? (
-            <span
-              style={{
-                color: "var(--ink-2)",
-                fontSize: 13,
-                minWidth: 0,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <MapPin size={14} style={{ color: "var(--r-high)", verticalAlign: "-2px" }} />{" "}
-              {userPlace ? (
-                <>
-                  คุณอยู่ที่{" "}
-                  <b style={{ color: "var(--ink)" }}>{userPlace.label}</b>
-                  {userPlace.detail ? ` · ${userPlace.detail}` : ""} —{" "}
-                </>
-              ) : null}
-              นอกพื้นที่ให้บริการ (เฉพาะ 9 จังหวัดภาคเหนือ)
-            </span>
+          ) : gridReady && national ? (
+            <>
+              <span style={{ display: "flex", alignItems: "center", flex: "none", gap: 6 }}>
+                <MapPin size={16} style={{ color: "var(--accent)" }} />
+                <span className="hero-locate-label" style={{ color: "var(--ink-2)", fontSize: 13, whiteSpace: "nowrap" }}>
+                  {statusMsg ?? "ทั่วประเทศตอนนี้"}
+                </span>
+              </span>
+              <span className="hero-tambon" style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+                {national.severeKm2 + national.highKm2 === 0 ? (
+                  "ไม่มีพื้นที่ระดับเสี่ยงสูงขึ้นไป"
+                ) : (
+                  <>
+                    {national.severeKm2 > 0 ? (
+                      <span style={{ color: "var(--r-severe)" }}>เสี่ยงสูงสุด {km2(national.severeKm2)}</span>
+                    ) : null}
+                    {national.severeKm2 > 0 && national.highKm2 > 0 ? " · " : null}
+                    {national.highKm2 > 0 ? (
+                      <span style={{ color: "var(--r-high)" }}>เสี่ยงสูง {km2(national.highKm2)}</span>
+                    ) : null}
+                  </>
+                )}
+              </span>
+              <span
+                className="hero-action"
+                style={{ color: "var(--ink-2)", fontSize: 13, minWidth: 0, flex: "1 1 auto", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+              >
+                · แตะบนแผนที่เพื่อตรวจจุดใดก็ได้
+              </span>
+            </>
           ) : (
-            <span style={{ color: "var(--ink-2)", fontSize: 13 }}>
-              {statusMsg ? `${statusMsg} — เลือกตำบลของคุณจากแผนที่หรือค้นหา` : "กำลังโหลด…"}
-            </span>
+            <span style={{ color: "var(--ink-2)", fontSize: 13 }}>กำลังโหลด…</span>
           )}
         </div>
 
@@ -2850,36 +2886,67 @@ function LayerSwitch({
   );
 }
 
-// ─── Drawer ─────────────────────────────────────────────────────
+// ─── InspectPanel ───────────────────────────────────────────────
 
-function Drawer({
-  row,
-  isUser,
+const closeBtnStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  background: "rgba(255,255,255,0.10)",
+  color: "var(--ink)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: 0,
+  cursor: "pointer",
+  flex: "none",
+};
+
+function InspectPanel({
+  point,
+  risk,
+  place,
+  flood,
+  floodWindowDays,
+  buildings,
+  water,
+  rain,
+  rainWindowEnd,
+  hotspots,
+  hotspotNames,
+  hotspotKey,
+  onPickHotspot,
+  onClear,
   onClose,
   methodOpen,
   onToggleMethod,
   methodSteps,
   sources,
-  topRiskList,
-  onPickRow,
 }: {
-  row: TambonRow;
-  isUser: boolean;
+  point: InspectPoint | null;
+  risk: PointRisk | null;
+  place: GeoPlace | null;
+  flood: FloodNear | null | "loading";
+  floodWindowDays: number | null;
+  buildings: number | null | "loading";
+  water: { item: ThaiWaterLevelStation; km: number }[];
+  rain: { item: ThaiWaterStation; km: number } | null;
+  rainWindowEnd: string | null;
+  hotspots: Hotspot[];
+  hotspotNames: Record<string, GeoPlace | null>;
+  hotspotKey: (h: { lat: number; lng: number }) => string;
+  onPickHotspot: (h: Hotspot) => void;
+  onClear: () => void;
   onClose: () => void;
   methodOpen: boolean;
   onToggleMethod: () => void;
   methodSteps: string[];
   sources: SourceNote[];
-  topRiskList: TambonRow[];
-  onPickRow: (gid: string) => void;
 }) {
-  const p = row.feature.properties;
-  const tier = row.liveTier;
-
-  // Contribution components — derived from per-tambon row values
-  const terrain = Math.min(1, row.staticNorm);
-  const wet = Math.min(1, row.wetnessNorm);
-  const precip = Math.min(1, row.precipNorm);
+  const tier: RiskTier | null = risk?.inside ? (risk.tier ?? risk.staticTier) : null;
+  const rainEnd = rainWindowEnd
+    ? new Intl.DateTimeFormat("th-TH", { day: "numeric", month: "short" }).format(new Date(rainWindowEnd))
+    : null;
 
   return (
     <aside
@@ -2910,180 +2977,235 @@ function Drawer({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.2 }}>
-            ตำบล{p.NAME_3}
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 8 }}>
-            อ.{amphoeName(p)} · จ.{thaiName(p.NAME_1)}
-            {isUser ? (
-              <span
-                style={{
-                  color: "var(--accent)",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.10em",
-                  textTransform: "uppercase",
-                  background: "rgba(64,224,189,0.12)",
-                  border: "1px solid rgba(64,224,189,0.35)",
-                  borderRadius: 999,
-                  padding: "2px 8px",
-                }}
-              >
-                ที่ตั้งของคุณ
-              </span>
-            ) : null}
-          </div>
+          {point ? (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.2 }}>
+                {place?.label ?? "จุดที่เลือก"}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 3, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span>{place?.detail || `${point.lat.toFixed(4)}, ${point.lng.toFixed(4)}`}</span>
+                {point.source === "user" ? (
+                  <span
+                    style={{
+                      color: "var(--accent)",
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.10em",
+                      background: "rgba(64,224,189,0.12)",
+                      border: "1px solid rgba(64,224,189,0.35)",
+                      borderRadius: 999,
+                      padding: "2px 8px",
+                    }}
+                  >
+                    ที่ตั้งของคุณ
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.3, lineHeight: 1.2 }}>
+                ภาพรวมทั้งประเทศ
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 3 }}>
+                แตะบนแผนที่หรือค้นหา เพื่อตรวจจุดใดก็ได้ในประเทศไทย
+              </div>
+            </>
+          )}
         </div>
-        <button
-          onClick={onClose}
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 14,
-            background: "rgba(255,255,255,0.10)",
-            color: "var(--ink)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: 0,
-            cursor: "pointer",
-            flex: "none",
-          }}
-          aria-label="ปิด"
-        >
+        <button onClick={onClose} style={closeBtnStyle} aria-label="ปิด">
           <X size={14} />
         </button>
       </div>
 
       <div className="drawer-scroll" style={{ display: "flex", flexDirection: "column", gap: 18, paddingRight: 4 }}>
-        {/* Tier banner — severity + what it means, one card */}
-        <div className={`tier-banner tbn-${tier}`}>
-          <div className="tb-head">
-            <div className="tb-glyph">{tierGlyph(tier)}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="tb-label">{TIER_TH[tier]}</div>
-              <div className="tb-en">{TIER_EN[tier]} · flash flood risk</div>
-            </div>
-          </div>
-          <div className="tb-action">{tierActionTH(tier)}</div>
-        </div>
-
-        {/* Contributions */}
-        <div>
-          <div className="dw-section-title">ทำไมถึงระดับนี้</div>
-          <div className="contrib">
-            <ContribRow name="ภูมิประเทศ" en="Terrain" cls="terrain" pct={terrain * 100} />
-            <ContribRow
-              name="ดินอิ่มน้ำ"
-              en="Wetness"
-              cls="wet"
-              pct={wet * 100}
-              extra={
-                row.wetnessMm !== null && row.wetnessMm > 0
-                  ? wet > 0.66
-                    ? "ฝนสะสม 7 วันสูง"
-                    : wet > 0.33
-                      ? "ฝนสะสม 7 วันปานกลาง"
-                      : "ฝนสะสม 7 วันต่ำ"
-                  : undefined
-              }
-            />
-            <ContribRow
-              name="ฝนตอนนี้"
-              en="Precip"
-              cls="precip"
-              pct={precip * 100}
-              extra={
-                row.precipMmPerHr > 5
-                  ? "ฝนตกหนัก"
-                  : row.precipMmPerHr > 1
-                    ? "ฝนตกปานกลาง"
-                    : row.precipMmPerHr > 0
-                      ? "ฝนพรำ"
-                      : undefined
-              }
-            />
-          </div>
-        </div>
-
-        {/* Buildings exposure — inventory count, not a risk score. */}
-        {p.buildings !== undefined ? (
-          <div className="dw-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "rgba(64,224,189,0.10)",
-                color: "var(--accent)",
-                flex: "none",
-              }}
-            >
-              <Building2 size={19} strokeWidth={2} />
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="dw-section-title" style={{ marginBottom: 2 }}>
-                บ้านเรือนในตำบล
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>
-                <span className="num-mono">{formatNumber(p.buildings)}</span>
-                <span style={{ fontSize: 12, color: "var(--ink-3)", marginLeft: 6, fontWeight: 500 }}>
-                  หลัง · Open Buildings v3
-                </span>
-              </div>
-            </div>
+        {point && risk && !risk.inside ? (
+          <div className="dw-card" style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            จุดนี้อยู่นอกพื้นที่คำนวณ (ทะเล หรือนอกประเทศไทย) — ไม่มีระดับความเสี่ยงให้แสดง
           </div>
         ) : null}
 
-        {/* Top risk */}
+        {point && tier && risk ? (
+          <>
+            {/* Tier banner — the colour of the dashed hex on the map */}
+            <div className={`tier-banner tbn-${tier}`}>
+              <div className="tb-head">
+                <div className="tb-glyph">{tierGlyph(tier)}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="tb-label">{TIER_TH[tier]}</div>
+                  <div className="tb-en">
+                    {TIER_EN[tier]} · {risk.tier ? "flash flood risk" : "terrain only — no rain data here"}
+                  </div>
+                </div>
+              </div>
+              <div className="tb-action">
+                {risk.tier ? tierActionTH(tier) : "ยังไม่มีข้อมูลฝนบริเวณนี้ จึงแสดงเฉพาะความเสี่ยงจากภูมิประเทศ"}
+              </div>
+            </div>
+
+            {/* Contributions */}
+            <div>
+              <div className="dw-section-title">ทำไมถึงระดับนี้</div>
+              <div className="contrib">
+                <ContribRow name="ภูมิประเทศ" en="Terrain" cls="terrain" pct={risk.staticNorm * 100} />
+                <ContribRow
+                  name="ดินอิ่มน้ำ"
+                  en="Wetness"
+                  cls="wet"
+                  pct={(risk.wetnessNorm ?? 0) * 100}
+                  extra={
+                    risk.rain7dMm !== null
+                      ? `ฝน 7 วัน ~${Math.round(risk.rain7dMm)} มม.${rainEnd ? ` (ถึง ${rainEnd})` : ""}`
+                      : "ไม่มีข้อมูล"
+                  }
+                />
+                <ContribRow
+                  name="ฝนตอนนี้"
+                  en="Precip"
+                  cls="precip"
+                  pct={(risk.precipNorm ?? 0) * 100}
+                  extra={
+                    risk.precipNowMmPerHr === null
+                      ? "ไม่มีข้อมูล"
+                      : risk.precipNowMmPerHr > 0.05
+                        ? `${risk.precipNowMmPerHr.toFixed(1)} มม./ชม.`
+                        : "ไม่มีฝน"
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Measured on the ground / from orbit near this spot */}
+            <div>
+              <div className="dw-section-title">วัดได้จริงใกล้จุดนี้</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {water.length === 0 ? (
+                  <div className="dw-card" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+                    ไม่มีสถานีวัดระดับน้ำในรัศมี 30 กม.
+                  </div>
+                ) : (
+                  water.map(({ item: st, km }) => {
+                    const pct = bankPercentOf(st);
+                    return (
+                      <div key={st.id} className="dw-card" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <Waves size={16} style={{ color: pct !== null ? bankPercentColor(pct) : "var(--ink-3)", flex: "none" }} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {st.station.tele_station_name?.th ?? "สถานีวัดระดับน้ำ"}
+                          </span>
+                          <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                            {km.toFixed(1)} กม. · {st.agency?.agency_shortname?.th ?? "สสน."} · {formatTimeBKK(st.waterlevel_datetime)} น.
+                          </span>
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: pct !== null ? bankPercentColor(pct) : "var(--ink-3)", whiteSpace: "nowrap" }}>
+                          {pct !== null ? `${Math.round(pct)}% ตลิ่ง` : "ไม่มีค่าตลิ่ง"}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+
+                {rain ? (
+                  <div className="dw-card" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Droplets size={16} style={{ color: rainIntensityColor(rain.item.rain_1h ?? 0), flex: "none" }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {rain.item.station.tele_station_name?.th ?? "สถานีวัดฝน"}
+                      </span>
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                        {rain.km.toFixed(1)} กม. · {formatTimeBKK(rain.item.rainfall_datetime)} น.
+                      </span>
+                    </span>
+                    <span style={{ fontSize: 12, textAlign: "right", whiteSpace: "nowrap" }}>
+                      <b>{(rain.item.rain_1h ?? 0).toFixed(1)}</b> มม./ชม.
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                        24 ชม. {(rain.item.rain_24h ?? 0).toFixed(1)} มม.
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="dw-card" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Satellite size={16} style={{ color: "#5cc4ee", flex: "none" }} />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>
+                    {flood === "loading" ? (
+                      <span style={{ color: "var(--ink-3)" }}>กำลังตรวจภาพดาวเทียม…</span>
+                    ) : flood === null ? (
+                      <span style={{ color: "var(--ink-3)" }}>ไม่มีข้อมูลน้ำท่วมจากดาวเทียม</span>
+                    ) : flood.rai >= 1 ? (
+                      <>
+                        ดาวเทียมตรวจพบน้ำท่วม <b>~{formatNumber(Math.round(flood.rai))} ไร่</b> ในรัศมี {flood.radiusKm} กม.
+                        {flood.nearestKm !== null ? ` · ใกล้สุด ${flood.nearestKm.toFixed(1)} กม.` : ""}
+                      </>
+                    ) : (
+                      <>ไม่พบน้ำท่วมในรัศมี {flood.radiusKm} กม.</>
+                    )}
+                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>
+                      Sentinel-1{floodWindowDays ? ` · ${floodWindowDays} วันล่าสุด` : ""}
+                    </span>
+                  </span>
+                </div>
+
+                {buildings !== null ? (
+                  <div className="dw-card" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Building2 size={16} style={{ color: "var(--accent)", flex: "none" }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>
+                      {buildings === "loading" ? (
+                        <span style={{ color: "var(--ink-3)" }}>กำลังนับบ้านเรือน…</span>
+                      ) : (
+                        <>
+                          บ้านเรือนในรัศมี 1 กม. <b>~{formatNumber(buildings)} หลัง</b>
+                        </>
+                      )}
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>Open Buildings v3</span>
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.5 }}>
+                ระดับความเสี่ยงอ่านจาก hex ขนาด ~7 กม. (เส้นประบนแผนที่) — บอกระดับพื้นที่ ไม่ใช่รายหลังคาเรือน
+              </div>
+            </div>
+
+            <button onClick={onClear} className="dw-row" style={{ justifyContent: "center", fontSize: 12.5, color: "var(--ink-2)" }}>
+              ดูภาพรวมทั้งประเทศ
+            </button>
+          </>
+        ) : null}
+
+        {/* Hotspots — replaces the old per-tambon ranking */}
         <div>
-          <div className="dw-section-title">ตำบลเสี่ยงสูงตอนนี้</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-            {topRiskList.map((r) => {
-              const t = r.liveTier;
-              const isCurrent = r.feature.properties.GID_3 === p.GID_3;
-              return (
-                <button
-                  key={r.feature.properties.GID_3}
-                  onClick={() => onPickRow(r.feature.properties.GID_3)}
-                  className={`dw-row ${isCurrent ? "current" : ""}`}
-                >
-                  <span
-                    style={{
-                      width: 3,
-                      alignSelf: "stretch",
-                      borderRadius: 2,
-                      background: riskMeta[t].color,
-                      flex: "none",
-                    }}
-                  />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 13,
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      ตำบล{r.feature.properties.NAME_3}
+          <div className="dw-section-title">จุดเฝ้าระวังตอนนี้</div>
+          {hotspots.length === 0 ? (
+            <div className="dw-card" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+              ตอนนี้ไม่มีพื้นที่ระดับเสี่ยงสูงขึ้นไป
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {hotspots.map((h) => {
+                const key = hotspotKey(h);
+                const name = hotspotNames[key];
+                const isCurrent =
+                  point !== null && point.source === "hotspot" && hotspotKey(point) === key;
+                return (
+                  <button key={key} onClick={() => onPickHotspot(h)} className={`dw-row ${isCurrent ? "current" : ""}`}>
+                    <span style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: riskMeta[h.tier].color, flex: "none" }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {name ? name.label : name === null ? `${h.lat.toFixed(2)}, ${h.lng.toFixed(2)}` : "กำลังหาชื่อพื้นที่…"}
+                      </span>
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {name?.detail ? `${name.detail} · ` : ""}~{formatNumber(Math.round((h.cells * HEX_AREA_KM2) / 10) * 10)} ตร.กม.
+                      </span>
                     </span>
-                    <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
-                      อ.{amphoeName(r.feature.properties)} · {thaiName(r.feature.properties.NAME_1)}
+                    <span className={`tier ${TIER_PILL[h.tier]}`} style={{ fontSize: 10.5, padding: "3px 8px" }}>
+                      {TIER_TH[h.tier]}
                     </span>
-                  </span>
-                  <span className={`tier ${TIER_PILL[t]}`} style={{ fontSize: 10.5, padding: "3px 8px" }}>
-                    {TIER_TH[t]}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Method + sources collapsible */}
@@ -3125,7 +3247,7 @@ function Drawer({
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {methodSteps.slice(0, 5).map((step, i) => (
+              {methodSteps.map((step, i) => (
                 <div key={step} style={{ display: "flex", gap: 8 }}>
                   <span className="num-mono" style={{ color: "var(--accent)" }}>
                     {i + 1}

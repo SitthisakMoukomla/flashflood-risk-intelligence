@@ -105,7 +105,7 @@ performance.getEntriesByType('resource')
   .sort((a,b) => b.ms - a.ms)
 ```
 
-ค่าปกติ: PMTiles ~19 KB ต่อมุมมอง, village_risk ~1.3 MB (โหลดครั้งเดียว), รวมเสร็จใน ~2 วินาที
+ค่าปกติ: PMTiles ~19 KB ต่อมุมมอง, wetness_grid ~0.1 MB (โหลดครั้งเดียว), รวมเสร็จใน ~2 วินาที
 
 ---
 

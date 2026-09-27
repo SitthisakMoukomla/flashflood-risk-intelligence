@@ -61,16 +61,23 @@ export type ThaiWaterLevelStation = {
  * (a handful of stations carry inconsistent survey data).
  */
 export function bankPercentOf(s: ThaiWaterLevelStation): number | null {
+  return bankPercentAt(s);
+}
+
+/** % of bank for a given level at this station — the live reading by
+ *  default, or a logged one (the survey levels it is measured against do
+ *  not change between polls). */
+export function bankPercentAt(s: ThaiWaterLevelStation, mslOverride?: number | null): number | null {
   const n = (v: unknown): number | null => {
     if (v === null || v === undefined || v === "") return null;
     const f = Number(v);
     return Number.isFinite(f) ? f : null;
   };
   const published = n(s.storage_percent);
-  if (published !== null) return published;
+  if (published !== null && mslOverride === undefined) return published;
 
   const st = s.station;
-  const msl = n(s.waterlevel_msl);
+  const msl = mslOverride === undefined ? n(s.waterlevel_msl) : n(mslOverride);
   const bed = n(st?.ground_level);
   if (msl === null || bed === null) return null;
 

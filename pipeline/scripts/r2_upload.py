@@ -65,7 +65,7 @@ def main(path: Path, key: str | None, cache_seconds: int) -> None:
         key,
         ExtraArgs={
             # Range requests from the browser need a type R2 will serve ranges for.
-            "ContentType": "application/octet-stream",
+            "ContentType": "application/x-ndjson; charset=utf-8" if path.suffix == ".jsonl" else "application/octet-stream",
             "CacheControl": f"public, max-age={cache_seconds}",
         },
         Config=TransferConfig(multipart_chunksize=64 * 1024 * 1024, max_concurrency=4),

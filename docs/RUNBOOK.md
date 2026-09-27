@@ -146,6 +146,21 @@ cd pipeline && uv run python scripts/r2_upload.py data/output/buildings.pmtiles
 
 ---
 
+## หน้าเทศบาลเมืองกระทุ่มล้ม (`/krathumlom`)
+
+- **ตอนนี้** (ฝน/ระดับน้ำ) ดึงสดจาก สสน. ทุก 10 นาที ไม่ต้องดูแล
+- **ประวัติน้ำท่วม** สร้างครั้งเดียวจากภาพ Sentinel-1 ตั้งแต่ปี 2015 ไม่มี cron — รันใหม่ปีละครั้ง
+  หรือหลังน้ำท่วมใหญ่ (ภาพที่อ่านแล้วถูกเก็บไว้ใน `pipeline/data/krathumlom/scenes/` รอบหลังเร็ว ~3 นาที):
+
+```bash
+cd pipeline && uv run python scripts/18_krathumlom_history.py
+```
+
+  แล้ว commit `public/data/krathumlom/` + `npm run deploy`
+- ได้ขอบเขตจริงจากเทศบาลเมื่อไหร่ ให้แก้ `load_tambon()` ในสคริปต์ให้อ่านไฟล์นั้นแทน GADM แล้วรันใหม่
+
+---
+
 ## ค่าใช้จ่าย — ตรวจว่ายังฟรีอยู่
 
 | บริการ | โควตาฟรี | ใช้จริง |

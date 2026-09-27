@@ -37,6 +37,7 @@ Planetary Computer      →  ภาพเรดาร์ Sentinel-1   (ผ่า
 | แผง "ตรวจจุดนี้" + จุดเฝ้าระวัง | `src/lib/inspect.ts` (คำนวณ) · `InspectPanel` ใน `FloodMap.tsx` (หน้าตา) |
 | เกณฑ์ระดับน้ำเทียบตลิ่ง | `src/lib/maesai.ts` → `bankPercentColor()` |
 | หน้าเฝ้าระวังแม่สาย | `src/components/MaeSaiWatch.tsx` |
+| หน้าเทศบาลเมืองกระทุ่มล้ม (`/krathumlom`) | `src/components/KrathumLomDashboard.tsx` · ประวัติจากดาวเทียม `pipeline/scripts/18_krathumlom_history.py` |
 | การตรวจจับน้ำท่วมจากดาวเทียม | `pipeline/scripts/14_sar_flood.py` |
 | แผนที่พื้นที่เสี่ยง (static) | `pipeline/scripts/15_susceptibility_thailand.py` |
 | ข้อมูลฝนสะสม | `pipeline/scripts/17_rain_chirps.py` |

@@ -15,6 +15,19 @@ const problems = [];
 const notes = [];
 const read = (p) => JSON.parse(readFileSync(p, "utf8"));
 
+// 0. `vercel build` bakes .env.local (and .env.production*.local) into the
+// production functions. A throwaway dev secret left there once went live.
+// Only the variables Vercel manages itself may be present at deploy time;
+// dev-only values belong in .env.development.local, which `next build`
+// never reads.
+const VERCEL_MANAGED = new Set(["BLOB_READ_WRITE_TOKEN", "VERCEL_OIDC_TOKEN", "VERCEL", "VERCEL_ENV", "VERCEL_URL", "VERCEL_GIT_COMMIT_SHA"]);
+for (const f of [".env.local", ".env.production.local", ".env.production"]) {
+  if (!existsSync(f)) continue;
+  const keys = readFileSync(f, "utf8").split("\n").map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=/)?.[1]).filter(Boolean);
+  const stray = keys.filter((k) => !VERCEL_MANAGED.has(k));
+  if (stray.length) problems.push(`${f} defines ${stray.join(", ")} — it would ship inside the production build; move dev values to .env.development.local`);
+}
+
 // 1. Observed flood: a full run covers a week and many satellite passes.
 const metaPath = "public/data/sar_flood_meta.json";
 if (!existsSync(metaPath)) {

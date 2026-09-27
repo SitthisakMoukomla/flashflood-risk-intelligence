@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "preflight": "node scripts/preflight.mjs",
-    "deploy": "npm run preflight && vercel build --prod && vercel deploy --prebuilt --prod --yes"
+    "deploy": "npm run preflight && vercel pull --yes --environment=production && vercel build --prod && vercel deploy --prebuilt --prod --yes"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0",

@@ -1,6 +1,6 @@
 "use client";
 
-// ส่องน้ำ (กรุงเทพฯ และปริมณฑล) — an operations view over the six
+// รอระบาย (กรุงเทพฯ และปริมณฑล) — an operations view over the six
 // provinces of the Bangkok Metropolitan Region.
 //
 // Live sources, each drawn with its own symbol so nobody mistakes one for
@@ -573,7 +573,7 @@ export function BmrDashboard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="ms-title">
             <Waves size={19} style={{ color: "var(--accent)", flex: "none" }} />
-            ส่องน้ำ · กรุงเทพฯ และปริมณฑล
+            รอระบาย · กรุงเทพฯ และปริมณฑล
           </h1>
           <p className="ms-sub"><span className="ms-slogan">ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว</span> · กทม. นนทบุรี ปทุมธานี สมุทรปราการ สมุทรสาคร นครปฐม · ข้อมูลสดจาก สนน. กทม., สสน., ชป., iTIC, Copernicus</p>
         </div>

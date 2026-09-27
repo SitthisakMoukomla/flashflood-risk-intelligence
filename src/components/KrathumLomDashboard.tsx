@@ -36,6 +36,7 @@ import {
   Waves,
 } from "lucide-react";
 import Link from "next/link";
+import { ReportsPanel } from "@/components/KrathumLomReports";
 import type * as Leaflet from "leaflet";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { haversineKm } from "@/lib/inspect";
@@ -110,7 +111,7 @@ type LogEntry = {
 };
 type Point = { t: number; v: number };
 
-type Tab = "now" | "history" | "todo";
+type Tab = "now" | "reports" | "history" | "todo";
 
 // Same palette as the PNG classes, for footprints drawn on top of it.
 function yearsColor(y: number): string {
@@ -223,6 +224,8 @@ export function KrathumLomDashboard() {
   const bldgLayerRef = useRef<Leaflet.GeoJSON | null>(null);
   const gaugeLayerRef = useRef<Leaflet.LayerGroup | null>(null);
   const [ready, setReady] = useState(false);
+  // Handed to child components as state, not refs, so they re-render once the map exists.
+  const [mapInst, setMapInst] = useState<{ L: typeof Leaflet; map: Leaflet.Map } | null>(null);
 
   const [meta, setMeta] = useState<HistoryMeta | null>(null);
   const [boundary, setBoundary] = useState<GeoJSON.Feature | null>(null);
@@ -238,6 +241,8 @@ export function KrathumLomDashboard() {
   const [now, setNow] = useState<number | null>(null);
 
   const [tab, setTab] = useState<Tab>("now");
+  const [openReports, setOpenReports] = useState(0);
+  const [showReports, setShowReports] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
   const [showBldg, setShowBldg] = useState(true);
   const [radarZoom, setRadarZoom] = useState(true);
@@ -401,6 +406,7 @@ export function KrathumLomDashboard() {
         .bindTooltip("สำนักงานเทศบาลเมืองกระทุ่มล้ม", { direction: "top" })
         .addTo(map);
       mapRef.current = map;
+      setMapInst({ L, map });
       setReady(true);
     })();
     return () => {
@@ -608,6 +614,10 @@ export function KrathumLomDashboard() {
               <input type="checkbox" checked={showBldg} onChange={(e) => setShowBldg(e.target.checked)} />
               บ้านที่ดาวเทียมเคยเห็นน้ำท่วม
             </label>
+            <label className="kl-check">
+              <input type="checkbox" checked={showReports} onChange={(e) => setShowReports(e.target.checked)} />
+              จุดที่เจ้าหน้าที่รายงาน
+            </label>
           </div>
           {meta ? (
             <div className="glass kl-legend">
@@ -634,6 +644,10 @@ export function KrathumLomDashboard() {
                   <span className="sw" style={{ borderRadius: 999, background: "#3fbf4e", border: "2px solid #fff" }} />
                   สถานีระดับน้ำ
                 </span>
+                <span className="kl-chip">
+                  <span className="sw kl-flag-sw" />
+                  จุดที่เจ้าหน้าที่รายงาน
+                </span>
               </span>
             </div>
           ) : null}
@@ -645,17 +659,21 @@ export function KrathumLomDashboard() {
             {(
               [
                 ["now", "ตอนนี้"],
-                ["history", "ประวัติน้ำท่วม"],
-                ["todo", "ข้อมูลที่รอ"],
+                ["reports", "รายงาน"],
+                ["history", "ประวัติ"],
+                ["todo", "ที่รอ"],
               ] as [Tab, string][]
             ).map(([k, label]) => (
               <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
                 {label}
+                {k === "reports" && openReports > 0 ? <span className="kl-tab-badge">{openReports}</span> : null}
               </button>
             ))}
           </nav>
 
           {err ? <div className="ms-err">โหลดข้อมูลไม่สำเร็จ: {err}</div> : null}
+
+          <ReportsPanel L={mapInst?.L ?? null} map={mapInst?.map ?? null} active={tab === "reports"} onCountChange={setOpenReports} visible={showReports} />
 
           {tab === "now" ? (
             <>
@@ -962,7 +980,7 @@ export function KrathumLomDashboard() {
               <div className="kl-card-head">ข้อมูลที่ต้องได้จากเทศบาล</div>
               <ul className="kl-todo">
                 <li><b>ขอบเขตเทศบาล</b> — ตอนนี้ใช้ขอบเขตตำบลกระทุ่มล้มจาก GADM แทน</li>
-                <li><b>จุดน้ำท่วมขังที่เคยบันทึก</b> — เติมเขตที่ดาวเทียมมองไม่เห็น (53% ของพื้นที่)</li>
+                <li><b>จุดน้ำท่วมขังที่เคยบันทึก</b> — เจ้าหน้าที่เพิ่มได้เองแล้วในแท็บ &ldquo;รายงาน&rdquo; ถ้ามีบันทึกเก่าเป็นไฟล์ ส่งมาให้นำเข้าได้</li>
                 <li><b>สถานีสูบน้ำ ประตูระบายน้ำ</b> — ตำแหน่ง ขนาดเครื่อง สถานะ</li>
                 <li><b>แนวคลองและท่อระบายน้ำหลัก</b></li>
                 <li><b>ชุมชน/หมู่บ้าน</b> — ชื่อ จำนวนครัวเรือน ผู้ประสานงาน</li>

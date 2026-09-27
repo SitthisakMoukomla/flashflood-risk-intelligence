@@ -11,6 +11,7 @@
     "deploy": "npm run preflight && vercel build --prod && vercel deploy --prebuilt --prod --yes"
   },
   "dependencies": {
+    "@vercel/blob": "^2.8.0",
     "h3-js": "^4.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",

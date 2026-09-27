@@ -153,7 +153,7 @@ export function BmrDashboard() {
   const [selected, setSelected] = useState<Selected>(null);
   const [radar, setRadar] = useState<RadarKey>("nk");
   const [radarWanted, setRadarWanted] = useState(true);
-  const [show, setShow] = useState({ bma: true, hii: true, rain: false, cams: true, sar: true });
+  const [show, setShow] = useState({ heat: true, bma: true, hii: true, rain: false, cams: true, sar: true });
   const [camTick, setCamTick] = useState(0);
   const [mapCentre, setMapCentre] = useState<[number, number]>(CENTRE);
 
@@ -392,6 +392,57 @@ export function BmrDashboard() {
     };
   }, [mapInst, show.sar, sar]);
 
+  // Exceedance heat — where the canal system is over its limits, weighted
+  // by how far over. A blinking square only says a line was crossed; the
+  // surface shows a basin failing together. Includes HII/RID gauges over
+  // their bank so the Chao Phraya reads in the same picture.
+  useEffect(() => {
+    if (!mapInst) return;
+    let cancelled = false;
+    if (!show.heat || (!bma && !water)) {
+      swap("heat", null);
+      return;
+    }
+    (async () => {
+      const { L } = mapInst;
+      // leaflet.heat attaches itself to the global `L`. The dynamic import
+      // gives a frozen ES-module namespace, which the plugin cannot extend;
+      // hand it the real Leaflet object (the CJS export behind `default`).
+      const Lreal = (L as unknown as { default?: typeof Leaflet }).default ?? L;
+      (window as unknown as { L: typeof Leaflet }).L = Lreal;
+      await import("leaflet.heat");
+      if (cancelled) return;
+      const pts: [number, number, number][] = [];
+      for (const g of bma?.gauges ?? []) {
+        if (g.status === "unknown" || g.level === null) continue;
+        const ref = g.critical ?? g.warning ?? g.bank;
+        if (ref === null) continue;
+        const over = g.level - ref;
+        if (over <= -0.1) continue; // only at or above the line
+        // 0.8 m over critical saturates; just at the line is a faint glow.
+        pts.push([g.lat, g.lng, Math.min(1, 0.25 + over / 0.8)]);
+      }
+      for (const { s, pct, stale } of waterRows) {
+        if (stale || pct === null || pct < 90) continue;
+        pts.push([...stPos(s), Math.min(1, 0.25 + (pct - 90) / 40)]);
+      }
+      // The plugin always draws into the overlay pane (z 400), which sits
+      // under the marker pane, so gauge squares stay on top of the glow.
+      const layer = Lreal.heatLayer(pts, {
+        radius: 34,
+        blur: 26,
+        minOpacity: 0.28,
+        maxZoom: 13,
+        gradient: { 0.2: "#67E8F9", 0.55: "#38BDF8", 1: "#1D4ED8" },
+      });
+      swap("heat", layer);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapInst, show.heat, bma, waterRows]);
+
   // BMA canal gauges — squares, coloured by BMA's own status.
   useEffect(() => {
     if (!mapInst) return;
@@ -405,7 +456,7 @@ export function BmrDashboard() {
       const m = BMA_STATUS_META[s.status];
       const icon = L.divIcon({
         className: "bmr-pin",
-        html: `<span class="bmr-sq ${s.kind === "gate" ? "is-gate" : ""} ${s.status === "critical" ? "is-crit" : ""}" style="--c:${m.color}"></span>`,
+        html: `<span class="bmr-sq ${s.kind === "gate" ? "is-gate" : ""}" style="--c:${m.color}"></span>`,
         iconSize: [12, 12],
         iconAnchor: [6, 6],
       });
@@ -499,7 +550,7 @@ export function BmrDashboard() {
             <Waves size={19} style={{ color: "var(--accent)", flex: "none" }} />
             ศูนย์ข้อมูลน้ำ · กรุงเทพฯ และปริมณฑล
           </h1>
-          <p className="ms-sub">กทม. นนทบุรี ปทุมธานี สมุทรปราการ สมุทรสาคร นครปฐม · ข้อมูลสดจาก สนน. กทม., สสน., ชป., iTIC, Copernicus</p>
+          <p className="ms-sub"><span className="ms-slogan">ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว</span> · กทม. นนทบุรี ปทุมธานี สมุทรปราการ สมุทรสาคร นครปฐม · ข้อมูลสดจาก สนน. กทม., สสน., ชป., iTIC, Copernicus</p>
         </div>
         <div className="kl-clock">
           <span className="num-mono kl-clock-time">{clock}</span>
@@ -570,7 +621,8 @@ export function BmrDashboard() {
             </div>
             {(
               [
-                ["bma", "คลอง/ประตูน้ำ กทม. (สนน.)"],
+                ["heat", "พื้นที่คาดว่าน้ำท่วม (คลอง/แม่น้ำเกินเกณฑ์)"],
+                ["bma", "สถานีคลอง/ประตูน้ำ กทม. (สนน.)"],
                 ["hii", "แม่น้ำ/คลอง สสน.-ชป."],
                 ["rain", "สถานีฝน"],
                 ["cams", "กล้อง"],
@@ -585,8 +637,8 @@ export function BmrDashboard() {
           </div>
           <div className="glass kl-legend">
             <span className="kl-legend-row">
-              <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#e63b2e" }} /> คลอง กทม. วิกฤต</span>
-              <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#ff8c1a" }} /> เตือนภัย</span>
+              <span className="kl-chip"><span className="sw" style={{ width: 52, borderRadius: 4, background: "linear-gradient(90deg, rgba(103,232,249,0), #67E8F9, #38BDF8, #1D4ED8)" }} /> พื้นที่คาดว่าน้ำท่วม · เกินเกณฑ์น้อย → มาก</span>
+              <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#e63b2e" }} /> สถานี กทม. วิกฤต</span>
               <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#3fbf4e" }} /> ปกติ</span>
               <span className="kl-chip"><span className="sw" style={{ borderRadius: 999, background: "#e63b2e", border: "2px solid #fff" }} /> สสน./ชป. ล้นตลิ่ง</span>
               <span className="kl-chip"><span className="sw" style={{ background: "#22d3ee", opacity: 0.8 }} /> ดาวเทียมเห็นน้ำ</span>

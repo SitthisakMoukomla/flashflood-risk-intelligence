@@ -1089,7 +1089,6 @@ a { color: inherit; }
   border: 1.5px solid #07131a; box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
 }
 .bmr-sq.is-gate { transform: rotate(45deg); border-radius: 1px; }
-.bmr-sq.is-crit { box-shadow: 0 0 0 2px rgba(230,59,46,0.45), 0 0 10px rgba(230,59,46,0.7); animation: kl-blink 1.6s ease-in-out infinite; }
 .bmr-sq-legend { border-radius: 2px !important; }
 .bmr-cam { color: #5cc4ee; font-size: 13px; line-height: 1; text-shadow: 0 0 3px #000; }
 .bmr-cam-img { width: 100%; border-radius: 8px; display: block; background: #0b1216; min-height: 120px; }
@@ -1101,3 +1100,6 @@ a { color: inherit; }
 .bmr-cam-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; background: #0b1216; }
 .bmr-cam-title { font-size: 11.5px; font-weight: 600; padding: 4px 6px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bmr-cam-card .kl-sub { padding: 0 6px 6px; }
+
+/* Slogan in the metro page header — same weight as the title's accent. */
+.ms-slogan { color: var(--accent); font-weight: 600; }

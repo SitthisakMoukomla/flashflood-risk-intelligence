@@ -167,7 +167,7 @@ cd pipeline && uv run python scripts/18_krathumlom_history.py
   token อยู่ใน env ของ Vercel เอง (`BLOB_READ_WRITE_TOKEN`) — ไม่ต้องดูแล
 - รหัสเจ้าหน้าที่คือ env `KRATHUMLOM_STAFF_CODE` (ตั้งครั้งเดียวด้วย `npx vercel env add KRATHUMLOM_STAFF_CODE production`
   แล้ว redeploy) เปลี่ยนรหัสก็ทำแบบเดียวกัน คนที่ล็อกอินค้างจะถูกเด้งออกอัตโนมัติ
-- ข้อมูลทั้งหมดอยู่ในไฟล์เดียว `krathumlom/reports.json` (สำรอง: `npx vercel blob get krathumlom/reports.json`)
+- ข้อมูลทั้งหมดอยู่ในไฟล์เดียว `krathumlom/reports.json` (สำรอง: `npx vercel blob get krathumlom/reports.json --store-id store_0KatrNuJodtM6UTW`)
   รูปอยู่ที่ `krathumlom/photos/<id>.jpg`
 - โควตาฟรี: 1 GB, เขียน 2,000 ครั้ง/เดือน (1 รายงาน = 1–2 ครั้ง) ถ้าเกินจะถูกปิดใช้ชั่วคราว ไม่มีค่าใช้จ่าย
 - dev ในเครื่อง: `npx vercel env pull .env.local` แล้วเพิ่มบรรทัด `KRATHUMLOM_STAFF_CODE="<รหัสสำหรับทดสอบ>"`

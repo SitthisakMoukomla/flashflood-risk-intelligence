@@ -1786,6 +1786,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
             </span>
             <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
           </Link>
+          <Link href="/bmr" className="toggle" style={{ textDecoration: "none" }}>
+            <span className="tg-glyph"><Radar size={18} strokeWidth={2} /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="tg-label">กรุงเทพฯ และปริมณฑล</span>
+              <span className="tg-hint">คลอง กทม. 199 สถานี · เรดาร์ · กล้อง · น้ำหนุน</span>
+            </span>
+            <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
+          </Link>
         </div>
 
         <div
@@ -2369,6 +2377,14 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
                   ? `สะพานมิตรภาพ ${maeSaiBridge.sp.toFixed(0)}% ของตลิ่ง · เปิดหน้าเต็ม`
                   : "แม่น้ำสาย · ต้นน้ำ→สะพาน"}
               </span>
+            </span>
+            <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
+          </Link>
+          <Link href="/bmr" className="toggle" style={{ textDecoration: "none" }}>
+            <span className="tg-glyph"><Radar size={18} strokeWidth={2} /></span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="tg-label">กรุงเทพฯ และปริมณฑล</span>
+              <span className="tg-hint">คลอง กทม. 199 สถานี · เรดาร์ · กล้อง · น้ำหนุน</span>
             </span>
             <ChevronRight size={15} style={{ color: "var(--ink-3)", flex: "none" }} />
           </Link>

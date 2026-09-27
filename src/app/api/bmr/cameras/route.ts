@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
  * The feed lists 68 cameras in the region but many are dark: Department of
  * Highways entries answer their snapshot URL with 0 bytes, and roughly half
  * the iTIC Motion cameras are offline at any moment. Each snapshot is
- * probed here (in parallel, 6 s cap) and only cameras returning a real JPEG
+ * probed here (in parallel, 15 s cap) and only cameras returning a real JPEG
  * are published, so the page never shows a grid of broken images. The
  * result is cached for 10 minutes; cameras come and go on that cadence.
  *
@@ -19,13 +19,14 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const revalidate = 600;
-export const maxDuration = 30;
+export const maxDuration = 40;
 
 const FEED = "https://camera.longdo.com/feed/?command=json";
 const UA = "FlashfloodRiskIntelligence/1.0 (flashflood-risk-intelligence.vercel.app)";
 // Bangkok Metropolitan Region (6 provinces) bounding box, from GADM.
 const BBOX = { w: 99.831, s: 13.425, e: 100.964, n: 14.273 };
-const PROBE_MS = 6000;
+// Generous: the camera relay is in Thailand and slow to first byte from afar.
+const PROBE_MS = 15000;
 const MIN_JPEG_BYTES = 1000;
 
 export type Camera = {

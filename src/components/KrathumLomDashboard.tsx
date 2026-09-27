@@ -532,7 +532,7 @@ export function KrathumLomDashboard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="ms-title">
             <Waves size={19} style={{ color: "var(--accent)", flex: "none" }} />
-            ศูนย์ข้อมูลน้ำ · เทศบาลเมืองกระทุ่มล้ม
+            ส่องน้ำ · เทศบาลเมืองกระทุ่มล้ม
           </h1>
           <p className="ms-sub">อ.สามพราน จ.นครปฐม · สำหรับเจ้าหน้าที่</p>
         </div>

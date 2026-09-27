@@ -38,7 +38,7 @@ Planetary Computer      →  ภาพเรดาร์ Sentinel-1   (ผ่า
 | เกณฑ์ระดับน้ำเทียบตลิ่ง | `src/lib/maesai.ts` → `bankPercentColor()` |
 | หน้าเฝ้าระวังแม่สาย | `src/components/MaeSaiWatch.tsx` |
 | หน้าเทศบาลเมืองกระทุ่มล้ม (`/krathumlom`) | `src/components/KrathumLomDashboard.tsx` · ประวัติจากดาวเทียม `pipeline/scripts/18_krathumlom_history.py` |
-| ศูนย์ข้อมูลน้ำ กรุงเทพฯ และปริมณฑล (`/bmr`) | `src/components/BmrDashboard.tsx` · API `src/app/api/bmr/{klongmap,cameras}/route.ts`, `src/app/api/hii/history/route.ts` · เกณฑ์ กทม. `src/lib/bma.ts` |
+| ส่องน้ำ · กรุงเทพฯ และปริมณฑล (`/bmr`) | `src/components/BmrDashboard.tsx` · API `src/app/api/bmr/{klongmap,cameras}/route.ts`, `src/app/api/hii/history/route.ts` · เกณฑ์ กทม. `src/lib/bma.ts` |
 | จุดที่เจ้าหน้าที่รายงาน (กระทุ่มล้ม) | `src/components/KrathumLomReports.tsx` · API `src/app/api/krathumlom/{reports,photos}/route.ts` · ชนิดข้อมูล `src/lib/reports.ts` |
 | การตรวจจับน้ำท่วมจากดาวเทียม | `pipeline/scripts/14_sar_flood.py` |
 | แผนที่พื้นที่เสี่ยง (static) | `pipeline/scripts/15_susceptibility_thailand.py` |

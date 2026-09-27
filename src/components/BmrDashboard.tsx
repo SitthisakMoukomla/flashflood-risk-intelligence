@@ -1,6 +1,6 @@
 "use client";
 
-// ศูนย์ข้อมูลน้ำ กรุงเทพฯ และปริมณฑล — an operations view over the six
+// ส่องน้ำ (กรุงเทพฯ และปริมณฑล) — an operations view over the six
 // provinces of the Bangkok Metropolitan Region.
 //
 // Live sources, each drawn with its own symbol so nobody mistakes one for
@@ -273,13 +273,47 @@ export function BmrDashboard() {
     ].filter((x): x is { v: number; t: string | null; label: string } => x.v !== null);
     return c.sort((a, b) => b.v - a.v)[0] ?? null;
   }, [tideToday]);
+  // Points at/above their threshold — drives the flood heatmap and ranks
+  // the cameras. Weight 0.25 = just at the line, 1 = well over.
+  const heatPts = useMemo(() => {
+    const pts: { lat: number; lng: number; w: number; name: string }[] = [];
+    for (const g of bma?.gauges ?? []) {
+      if (g.status === "unknown" || g.level === null) continue;
+      const ref = g.critical ?? g.warning ?? g.bank;
+      if (ref === null) continue;
+      const over = g.level - ref;
+      if (over <= -0.1) continue; // only at or above the line
+      // 0.8 m over critical saturates; just at the line is a faint glow.
+      pts.push({ lat: g.lat, lng: g.lng, w: Math.min(1, 0.25 + over / 0.8), name: g.name });
+    }
+    for (const { s, pct, stale } of waterRows) {
+      if (stale || pct === null || pct < 90) continue;
+      const [lat, lng] = stPos(s);
+      pts.push({ lat, lng, w: Math.min(1, 0.25 + (pct - 90) / 40), name: s.station.tele_station_name?.th ?? "สถานี สสน." });
+    }
+    return pts;
+  }, [bma, waterRows]);
+  // Cameras ranked by distance to the nearest over-threshold point — eyes on
+  // the trouble. With nothing over threshold, nearest to the map centre.
   const camsNear = useMemo(
     () =>
       (cams ?? [])
-        .map((c) => ({ c, km: haversineKm(mapCentre[0], mapCentre[1], c.lat, c.lng) }))
+        .map((c) => {
+          if (heatPts.length === 0) return { c, km: haversineKm(mapCentre[0], mapCentre[1], c.lat, c.lng), near: null as string | null };
+          let best = Infinity;
+          let near: string | null = null;
+          for (const pt of heatPts) {
+            const d = haversineKm(pt.lat, pt.lng, c.lat, c.lng);
+            if (d < best) {
+              best = d;
+              near = pt.name;
+            }
+          }
+          return { c, km: best, near };
+        })
         .sort((a, b) => a.km - b.km)
         .slice(0, 12),
-    [cams, mapCentre],
+    [cams, mapCentre, heatPts],
   );
 
   // ── History on demand (HII only)
@@ -412,20 +446,7 @@ export function BmrDashboard() {
       (window as unknown as { L: typeof Leaflet }).L = Lreal;
       await import("leaflet.heat");
       if (cancelled) return;
-      const pts: [number, number, number][] = [];
-      for (const g of bma?.gauges ?? []) {
-        if (g.status === "unknown" || g.level === null) continue;
-        const ref = g.critical ?? g.warning ?? g.bank;
-        if (ref === null) continue;
-        const over = g.level - ref;
-        if (over <= -0.1) continue; // only at or above the line
-        // 0.8 m over critical saturates; just at the line is a faint glow.
-        pts.push([g.lat, g.lng, Math.min(1, 0.25 + over / 0.8)]);
-      }
-      for (const { s, pct, stale } of waterRows) {
-        if (stale || pct === null || pct < 90) continue;
-        pts.push([...stPos(s), Math.min(1, 0.25 + (pct - 90) / 40)]);
-      }
+      const pts: [number, number, number][] = heatPts.map((pt) => [pt.lat, pt.lng, pt.w]);
       // The plugin always draws into the overlay pane (z 400), which sits
       // under the marker pane, so gauge squares stay on top of the glow.
       const layer = Lreal.heatLayer(pts, {
@@ -441,7 +462,7 @@ export function BmrDashboard() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapInst, show.heat, bma, waterRows]);
+  }, [mapInst, show.heat, heatPts]);
 
   // BMA canal gauges — squares, coloured by BMA's own status.
   useEffect(() => {
@@ -454,15 +475,19 @@ export function BmrDashboard() {
     const g = L.layerGroup();
     for (const s of bma.gauges) {
       const m = BMA_STATUS_META[s.status];
+      // River side ≥ 1 m above the canal side: the gate is holding back the
+      // river. Shown as a ring, not in the heatmap — the canal is not over.
+      const gap = s.kind === "gate" && s.level !== null && s.levelOut !== null ? s.levelOut - s.level : null;
+      const pressure = gap !== null && gap >= 1;
       const icon = L.divIcon({
         className: "bmr-pin",
-        html: `<span class="bmr-sq ${s.kind === "gate" ? "is-gate" : ""}" style="--c:${m.color}"></span>`,
+        html: `<span class="bmr-sq ${s.kind === "gate" ? "is-gate" : ""} ${pressure ? "is-pressure" : ""}" style="--c:${m.color}"></span>`,
         iconSize: [12, 12],
         iconAnchor: [6, 6],
       });
       L.marker([s.lat, s.lng], { icon, zIndexOffset: s.status === "critical" ? 300 : 100 })
         .bindTooltip(
-          `<b>${s.name}</b><br/>${m.label}${s.level !== null ? ` · ${s.level.toFixed(2)} ม.` : ""}${s.critical !== null ? ` (วิกฤต ${s.critical.toFixed(2)})` : ""}<br/><span style="opacity:.7">สนน. กทม. · ${s.ageMin !== null ? `${s.ageMin} นาทีก่อน` : "—"}</span>`,
+          `<b>${s.name}</b><br/>${m.label}${s.level !== null ? ` · ${s.level.toFixed(2)} ม.` : ""}${s.critical !== null ? ` (วิกฤต ${s.critical.toFixed(2)})` : ""}${pressure && s.levelOut !== null && gap !== null ? `<br/>นอกประตู ${s.levelOut.toFixed(2)} ม. — สูงกว่าใน ${gap.toFixed(2)} ม.` : ""}<br/><span style="opacity:.7">สนน. กทม. · ${s.ageMin !== null ? `${s.ageMin} นาทีก่อน` : "—"}</span>`,
           { direction: "top" },
         )
         .on("click", () => setSelected({ kind: "bma", code: s.code }))
@@ -548,7 +573,7 @@ export function BmrDashboard() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="ms-title">
             <Waves size={19} style={{ color: "var(--accent)", flex: "none" }} />
-            ศูนย์ข้อมูลน้ำ · กรุงเทพฯ และปริมณฑล
+            ส่องน้ำ · กรุงเทพฯ และปริมณฑล
           </h1>
           <p className="ms-sub"><span className="ms-slogan">ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว</span> · กทม. นนทบุรี ปทุมธานี สมุทรปราการ สมุทรสาคร นครปฐม · ข้อมูลสดจาก สนน. กทม., สสน., ชป., iTIC, Copernicus</p>
         </div>
@@ -625,7 +650,7 @@ export function BmrDashboard() {
                 ["bma", "สถานีคลอง/ประตูน้ำ กทม. (สนน.)"],
                 ["hii", "แม่น้ำ/คลอง สสน.-ชป."],
                 ["rain", "สถานีฝน"],
-                ["cams", "กล้อง"],
+                ["cams", cams ? `กล้อง (มีภาพ ${cams.length}${camsListed ? `/${camsListed}` : ""})` : "กล้อง"],
                 ["sar", "น้ำท่วมจากดาวเทียม 7 วัน"],
               ] as [keyof typeof show, string][]
             ).map(([k, label]) => (
@@ -640,6 +665,7 @@ export function BmrDashboard() {
               <span className="kl-chip"><span className="sw" style={{ width: 52, borderRadius: 4, background: "linear-gradient(90deg, rgba(103,232,249,0), #67E8F9, #38BDF8, #1D4ED8)" }} /> พื้นที่คาดว่าน้ำท่วม · เกินเกณฑ์น้อย → มาก</span>
               <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#e63b2e" }} /> สถานี กทม. วิกฤต</span>
               <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#3fbf4e" }} /> ปกติ</span>
+              <span className="kl-chip"><span className="sw bmr-sq-legend" style={{ background: "#3fbf4e", boxShadow: "0 0 0 3px rgba(125,211,252,0.6)" }} /> ประตูรับแรงดันแม่น้ำ (นอก−ใน ≥ 1 ม.)</span>
               <span className="kl-chip"><span className="sw" style={{ borderRadius: 999, background: "#e63b2e", border: "2px solid #fff" }} /> สสน./ชป. ล้นตลิ่ง</span>
               <span className="kl-chip"><span className="sw" style={{ background: "#22d3ee", opacity: 0.8 }} /> ดาวเทียมเห็นน้ำ</span>
               <span className="kl-chip"><span className="bmr-cam" style={{ fontSize: 12 }}>▣</span> กล้อง</span>
@@ -860,15 +886,15 @@ export function BmrDashboard() {
 
           {tab === "cameras" ? (
             <section className="kl-card">
-              <div className="kl-card-head"><CameraIcon size={16} style={{ color: "#5cc4ee" }} /> กล้องใกล้กลางแผนที่<span className="kl-card-meta">{cams ? `มีภาพ ${cams.length}${camsListed ? ` จาก ${camsListed}` : ""} ตัว` : ""}</span></div>
+              <div className="kl-card-head"><CameraIcon size={16} style={{ color: "#5cc4ee" }} /> {heatPts.length ? "กล้องใกล้จุดน้ำเกินเกณฑ์" : "กล้องใกล้กลางแผนที่"}<span className="kl-card-meta">{cams ? `มีภาพ ${cams.length}${camsListed ? ` จาก ${camsListed}` : ""} ตัว` : ""}</span></div>
               {!cams ? <div className="kl-muted">กำลังโหลด…</div> : (
                 <div className="bmr-cam-grid">
-                  {camsNear.map(({ c, km }) => (
+                  {camsNear.map(({ c, km, near }) => (
                     <button key={c.id} className="bmr-cam-card" onClick={() => { setSelected({ kind: "cam", id: c.id }); flyTo(c.lat, c.lng, 14); }}>
                       {/* eslint-disable-next-line @next/next/no-img-element -- remote snapshot */}
                       <img src={`${c.snapshot}&t=${camTick}`} alt={c.title} loading="lazy" />
                       <span className="bmr-cam-title">{c.title}</span>
-                      <span className="kl-sub">{km.toFixed(1)} กม. · {c.org}</span>
+                      <span className="kl-sub">{km.toFixed(1)} กม.{near ? ` จาก ${near}` : ""} · {c.org}</span>
                     </button>
                   ))}
                 </div>

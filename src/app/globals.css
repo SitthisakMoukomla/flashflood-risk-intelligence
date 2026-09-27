@@ -1089,6 +1089,7 @@ a { color: inherit; }
   border: 1.5px solid #07131a; box-shadow: 0 0 0 1px rgba(255,255,255,0.35);
 }
 .bmr-sq.is-gate { transform: rotate(45deg); border-radius: 1px; }
+.bmr-sq.is-pressure { box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 0 4px rgba(125,211,252,0.6); }
 .bmr-sq-legend { border-radius: 2px !important; }
 .bmr-cam { color: #5cc4ee; font-size: 13px; line-height: 1; text-shadow: 0 0 3px #000; }
 .bmr-cam-img { width: 100%; border-radius: 8px; display: block; background: #0b1216; min-height: 120px; }
@@ -1103,3 +1104,7 @@ a { color: inherit; }
 
 /* Slogan in the metro page header — same weight as the title's accent. */
 .ms-slogan { color: var(--accent); font-weight: 600; }
+/* leaflet.heat appends its canvas after Leaflet's own canvas renderer in the
+   overlay pane; without this it swallows every click meant for the HII
+   circle markers underneath. */
+.leaflet-heatmap-layer { pointer-events: none; }

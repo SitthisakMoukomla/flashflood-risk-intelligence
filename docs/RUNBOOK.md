@@ -211,3 +211,11 @@ cd pipeline && uv run python scripts/18_krathumlom_history.py
 - [ARCHITECTURE.md](ARCHITECTURE.md) — อะไรอยู่ตรงไหน
 - [LESSONS.md](LESSONS.md) — เคยพลาดอะไรมาบ้าง
 - [../workshop/](../workshop/) — สื่อการสอน
+
+### BMR cameras — สำนักการระบายน้ำ กทม. (dds.bangkok.go.th)
+`/api/bmr/cameras` also lists the six drainage-department water-level JPEGs
+(บางเขนใหม่, สะพานพระปิ่นเกล้า, บางนา, คลองสวนแดน 1, คลองชักพระ, คลองทวีวัฒนา;
+coordinates from the department's own map on `cctv.php`). Each is HEAD-probed
+and published only when `Last-Modified` is within 30 min — the files sat
+untouched from 28 Aug 2026 for over a month, so `sources.dds.live` is often 0.
+Nothing to fix on our side when that happens; it is their uplink.

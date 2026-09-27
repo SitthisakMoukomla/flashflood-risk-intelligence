@@ -76,6 +76,9 @@ function fmtTime(iso: string | null | undefined): string {
 }
 const fmtClock = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: TZ }).format(new Date(iso)) : "—";
+// Cache-buster that works for URLs with and without a query string
+// (iTIC snapshots carry one, the drainage-department JPEGs do not).
+const withTick = (url: string, t: number | string) => `${url}${url.includes("?") ? "&" : "?"}t=${t}`;
 const stPos = (s: { station: { tele_station_lat: number; tele_station_long: number } }) =>
   [s.station.tele_station_lat, s.station.tele_station_long] as [number, number];
 const inBox = (lat: number, lng: number) => lat >= BBOX.s && lat <= BBOX.n && lng >= BBOX.w && lng <= BBOX.e;
@@ -545,9 +548,10 @@ export function BmrDashboard() {
     const { L } = mapInst;
     const g = L.layerGroup();
     const icon = L.divIcon({ className: "bmr-pin", html: '<span class="bmr-cam">▣</span>', iconSize: [14, 14], iconAnchor: [7, 7] });
+    const waterIcon = L.divIcon({ className: "bmr-pin", html: '<span class="bmr-cam is-water">▣</span>', iconSize: [14, 14], iconAnchor: [7, 7] });
     for (const c of cams) {
-      L.marker([c.lat, c.lng], { icon, zIndexOffset: 50 })
-        .bindTooltip(`📷 ${c.title}<br/><span style="opacity:.7">${c.org}</span>`, { direction: "top" })
+      L.marker([c.lat, c.lng], { icon: c.kind === "water" ? waterIcon : icon, zIndexOffset: c.kind === "water" ? 80 : 50 })
+        .bindTooltip(`${c.kind === "water" ? "💧" : "📷"} ${c.title}<br/><span style="opacity:.7">${c.org}</span>`, { direction: "top" })
         .on("click", () => {
           setSelected({ kind: "cam", id: c.id });
           setTab("cameras");
@@ -752,16 +756,16 @@ export function BmrDashboard() {
               {/* eslint-disable-next-line @next/next/no-img-element -- MJPEG stream; the browser plays multipart/x-mixed-replace in an <img> */}
               <img
                 key={`${selCam.id}-${camTick}`}
-                src={selCam.live ? `${selCam.live}&t=${camTick}` : `${selCam.snapshot}&t=${camTick}`}
+                src={selCam.live ? withTick(selCam.live, camTick) : withTick(selCam.snapshot, camTick)}
                 alt={selCam.title}
                 className="bmr-cam-img"
                 onError={(e) => {
                   // Stream refused → fall back to the still.
                   const img = e.currentTarget;
-                  if (!img.src.includes(selCam.snapshot)) img.src = `${selCam.snapshot}&t=${Date.now()}`;
+                  if (!img.src.includes(selCam.snapshot)) img.src = withTick(selCam.snapshot, Date.now());
                 }}
               />
-              <div className="kl-sub" style={{ marginTop: 6 }}>{selCam.live ? "🔴 ภาพสด (MJPEG) · " : "ภาพนิ่ง · "}{selCam.org}{selCam.sponsor && selCam.sponsor !== selCam.org ? ` · ${selCam.sponsor}` : ""}</div>
+              <div className="kl-sub" style={{ marginTop: 6 }}>{selCam.live ? "🔴 ภาพสด (MJPEG) · " : selCam.capturedAt ? `💧 ภาพเมื่อ ${new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: TZ }).format(new Date(selCam.capturedAt))} น. · ` : "ภาพนิ่ง · "}{selCam.org}{selCam.sponsor && selCam.sponsor !== selCam.org ? ` · ${selCam.sponsor}` : ""}</div>
             </section>
           ) : null}
 
@@ -892,14 +896,14 @@ export function BmrDashboard() {
                   {camsNear.map(({ c, km, near }) => (
                     <button key={c.id} className="bmr-cam-card" onClick={() => { setSelected({ kind: "cam", id: c.id }); flyTo(c.lat, c.lng, 14); }}>
                       {/* eslint-disable-next-line @next/next/no-img-element -- remote snapshot */}
-                      <img src={`${c.snapshot}&t=${camTick}`} alt={c.title} loading="lazy" />
-                      <span className="bmr-cam-title">{c.title}</span>
+                      <img src={withTick(c.snapshot, camTick)} alt={c.title} loading="lazy" />
+                      <span className="bmr-cam-title">{c.kind === "water" ? "💧 " : ""}{c.title}</span>
                       <span className="kl-sub">{km.toFixed(1)} กม.{near ? ` จาก ${near}` : ""} · {c.org}</span>
                     </button>
                   ))}
                 </div>
               )}
-              <div className="kl-muted" style={{ marginTop: 8 }}>กล้องจราจรสาธารณะ (iTIC/Longdo) แสดงเฉพาะตัวที่มีภาพ ณ ตอนนี้ — ตรวจใหม่ทุก 10 นาที · แตะเพื่อดูภาพสด · เลื่อนแผนที่เพื่อเปลี่ยนชุดกล้อง · กล้องกรมทางหลวงในฟีดไม่ส่งภาพ และไม่มีกล้องของ สนน. ในฟีดสาธารณะ</div>
+              <div className="kl-muted" style={{ marginTop: 8 }}>กล้องสาธารณะ: จราจร (iTIC/Longdo/กรมทางหลวง) + กล้องระดับน้ำ สนน. กทม. 6 จุด (💧) — แสดงเฉพาะตัวที่มีภาพ ณ ตอนนี้; กล้อง สนน. ต้องมีภาพใหม่ภายใน 30 นาที — ตรวจใหม่ทุก 10 นาที · แตะเพื่อดูภาพสด · เลื่อนแผนที่เพื่อเปลี่ยนชุดกล้อง · กล้องกรมทางหลวงในฟีดไม่ส่งภาพ และไม่มีกล้องของ สนน. ในฟีดสาธารณะ</div>
             </section>
           ) : null}
 

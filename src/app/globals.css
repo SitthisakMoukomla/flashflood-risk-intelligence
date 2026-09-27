@@ -1092,6 +1092,7 @@ a { color: inherit; }
 .bmr-sq.is-pressure { box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0 0 4px rgba(125,211,252,0.6); }
 .bmr-sq-legend { border-radius: 2px !important; }
 .bmr-cam { color: #5cc4ee; font-size: 13px; line-height: 1; text-shadow: 0 0 3px #000; }
+.bmr-cam.is-water { color: #67E8F9; }
 .bmr-cam-img { width: 100%; border-radius: 8px; display: block; background: #0b1216; min-height: 120px; }
 .bmr-cam-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .bmr-cam-card {

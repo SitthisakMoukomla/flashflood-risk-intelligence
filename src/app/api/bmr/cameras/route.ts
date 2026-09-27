@@ -2,21 +2,31 @@ import { NextResponse } from "next/server";
 
 /**
  * Public traffic cameras in the metro region, from the iTIC Foundation /
- * Longdo feed (Department of Highways + iTIC Motion). Each camera exposes a
- * JPEG snapshot the browser can load directly. Placeholder entries (camid
- * "X.X.X.X:YYYY") and cameras outside the metro bounding box are dropped.
+ * Longdo feed, filtered to the ones that have a picture right now.
  *
- * iTIC asks that the sponsor text be shown with each camera; it is passed
- * through as `sponsor` for the UI to display.
+ * The feed lists 68 cameras in the region but many are dark: Department of
+ * Highways entries answer their snapshot URL with 0 bytes, and roughly half
+ * the iTIC Motion cameras are offline at any moment. Each snapshot is
+ * probed here (in parallel, 6 s cap) and only cameras returning a real JPEG
+ * are published, so the page never shows a grid of broken images. The
+ * result is cached for 10 minutes; cameras come and go on that cadence.
+ *
+ * `live` is the camera's MJPEG stream (multipart/x-mixed-replace), which a
+ * plain <img> renders as moving video — used for the selected camera only.
+ *
+ * iTIC asks that the sponsor text be shown with each camera.
  */
 
 export const runtime = "nodejs";
-export const revalidate = 1800;
+export const revalidate = 600;
+export const maxDuration = 30;
 
 const FEED = "https://camera.longdo.com/feed/?command=json";
 const UA = "FlashfloodRiskIntelligence/1.0 (flashflood-risk-intelligence.vercel.app)";
 // Bangkok Metropolitan Region (6 provinces) bounding box, from GADM.
 const BBOX = { w: 99.831, s: 13.425, e: 100.964, n: 14.273 };
+const PROBE_MS = 6000;
+const MIN_JPEG_BYTES = 1000;
 
 export type Camera = {
   id: string;
@@ -26,6 +36,7 @@ export type Camera = {
   org: string;
   sponsor: string;
   snapshot: string;
+  live: string | null;
   inCity: boolean;
 };
 
@@ -38,7 +49,19 @@ type FeedItem = {
   organization?: string;
   sponsertext?: string;
   imgurl?: string;
+  vdourl?: string;
 };
+
+async function hasPicture(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": UA }, cache: "no-store", signal: AbortSignal.timeout(PROBE_MS) });
+    if (!r.ok) return false;
+    const buf = new Uint8Array(await r.arrayBuffer());
+    return buf.length >= MIN_JPEG_BYTES && buf[0] === 0xff && buf[1] === 0xd8;
+  } catch {
+    return false;
+  }
+}
 
 export async function GET() {
   let items: FeedItem[];
@@ -49,14 +72,14 @@ export async function GET() {
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "feed failed" }, { status: 502 });
   }
-  const cameras: Camera[] = [];
+  const candidates: Camera[] = [];
   for (const c of items) {
     const lat = Number(c.latitude);
     const lng = Number(c.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     if (lat < BBOX.s || lat > BBOX.n || lng < BBOX.w || lng > BBOX.e) continue;
     if (!c.imgurl || /X\.X\.X\.X/.test(c.imgurl) || !c.camid) continue;
-    cameras.push({
+    candidates.push({
       id: c.camid,
       title: (c.title ?? "").replace(/^\([^)]*\)\s*/, "").trim(),
       lat,
@@ -64,11 +87,19 @@ export async function GET() {
       org: c.organization ?? "",
       sponsor: c.sponsertext ?? "",
       snapshot: c.imgurl,
+      live: c.vdourl && /mjpeg/.test(c.vdourl) ? c.vdourl : null,
       inCity: c.incity === "Y",
     });
   }
+  const alive = await Promise.all(candidates.map((c) => hasPicture(c.snapshot)));
+  const cameras = candidates.filter((_, i) => alive[i]);
   return NextResponse.json(
-    { fetchedAt: new Date().toISOString(), cameras, attribution: "กล้อง: มูลนิธิศูนย์ข้อมูลจราจรอัจฉริยะไทย (iTIC) · Longdo · กรมทางหลวง" },
-    { headers: { "Cache-Control": "s-maxage=1800, stale-while-revalidate=86400" } },
+    {
+      fetchedAt: new Date().toISOString(),
+      listed: candidates.length,
+      cameras,
+      attribution: "กล้อง: มูลนิธิศูนย์ข้อมูลจราจรอัจฉริยะไทย (iTIC) · Longdo · กรมทางหลวง",
+    },
+    { headers: { "Cache-Control": "s-maxage=600, stale-while-revalidate=3600" } },
   );
 }

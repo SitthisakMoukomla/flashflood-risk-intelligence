@@ -141,6 +141,7 @@ export function BmrDashboard() {
   const [rain, setRain] = useState<ThaiWaterStation[] | null>(null);
   const [water, setWater] = useState<ThaiWaterLevelStation[] | null>(null);
   const [cams, setCams] = useState<Camera[] | null>(null);
+  const [camsListed, setCamsListed] = useState<number | null>(null);
   const [sar, setSar] = useState<SarFloodMeta | null>(null);
   const [provinces, setProvinces] = useState<GeoJSON.FeatureCollection | null>(null);
   const [hist, setHist] = useState<Record<string, History | "loading" | "error">>({});
@@ -176,7 +177,11 @@ export function BmrDashboard() {
         const [p, s, c] = await Promise.all([fetch("/data/bmr/provinces.geojson"), fetch("/data/sar_flood_meta.json"), fetch("/api/bmr/cameras")]);
         if (p.ok) setProvinces((await p.json()) as GeoJSON.FeatureCollection);
         if (s.ok) setSar((await s.json()) as SarFloodMeta);
-        if (c.ok) setCams(((await c.json()) as { cameras: Camera[] }).cameras);
+        if (c.ok) {
+          const j = (await c.json()) as { cameras: Camera[]; listed?: number };
+          setCams(j.cameras);
+          setCamsListed(j.listed ?? null);
+        }
       } catch {
         /* each layer is optional */
       }
@@ -239,11 +244,13 @@ export function BmrDashboard() {
           // HII keeps serving a station's last value after it goes quiet;
           // a reading older than a day is history, not status.
           const t = Date.parse((s.waterlevel_datetime ?? "").replace(" ", "T") + "+07:00");
-          const stale = !Number.isFinite(t) || Date.now() - t > 24 * 3600_000;
+          // Measured against the last refresh, not the wall clock: the memo
+          // must stay pure and only move when the data does.
+          const stale = !Number.isFinite(t) || (updatedAt ?? 0) - t > 24 * 3600_000;
           return { s, pct, cur, dCm: Number.isFinite(cur) && Number.isFinite(prev) ? (cur - prev) * 100 : null, stale };
         })
         .sort((a, b) => Number(a.stale) - Number(b.stale) || (b.pct ?? -1) - (a.pct ?? -1)),
-    [water],
+    [water, updatedAt],
   );
   const liveRows = waterRows.filter((r) => !r.stale);
   const staleCount = waterRows.length - liveRows.length;
@@ -664,9 +671,19 @@ export function BmrDashboard() {
                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selCam.title}</span>
                 <button className="kl-icon-btn" onClick={() => setSelected(null)} aria-label="ปิด"><X size={14} /></button>
               </div>
-              {/* eslint-disable-next-line @next/next/no-img-element -- remote snapshot, cache-busted each refresh */}
-              <img src={`${selCam.snapshot}&t=${camTick}`} alt={selCam.title} className="bmr-cam-img" />
-              <div className="kl-sub" style={{ marginTop: 6 }}>{selCam.org}{selCam.sponsor ? ` · ${selCam.sponsor}` : ""} · ภาพนิ่ง อัปเดตทุก 5 นาที (กดรีเฟรชเพื่อดูภาพใหม่)</div>
+              {/* eslint-disable-next-line @next/next/no-img-element -- MJPEG stream; the browser plays multipart/x-mixed-replace in an <img> */}
+              <img
+                key={`${selCam.id}-${camTick}`}
+                src={selCam.live ? `${selCam.live}&t=${camTick}` : `${selCam.snapshot}&t=${camTick}`}
+                alt={selCam.title}
+                className="bmr-cam-img"
+                onError={(e) => {
+                  // Stream refused → fall back to the still.
+                  const img = e.currentTarget;
+                  if (!img.src.includes(selCam.snapshot)) img.src = `${selCam.snapshot}&t=${Date.now()}`;
+                }}
+              />
+              <div className="kl-sub" style={{ marginTop: 6 }}>{selCam.live ? "🔴 ภาพสด (MJPEG) · " : "ภาพนิ่ง · "}{selCam.org}{selCam.sponsor && selCam.sponsor !== selCam.org ? ` · ${selCam.sponsor}` : ""}</div>
             </section>
           ) : null}
 
@@ -791,7 +808,7 @@ export function BmrDashboard() {
 
           {tab === "cameras" ? (
             <section className="kl-card">
-              <div className="kl-card-head"><CameraIcon size={16} style={{ color: "#5cc4ee" }} /> กล้องใกล้กลางแผนที่<span className="kl-card-meta">{cams ? `${cams.length} ตัวในภูมิภาค` : ""}</span></div>
+              <div className="kl-card-head"><CameraIcon size={16} style={{ color: "#5cc4ee" }} /> กล้องใกล้กลางแผนที่<span className="kl-card-meta">{cams ? `มีภาพ ${cams.length}${camsListed ? ` จาก ${camsListed}` : ""} ตัว` : ""}</span></div>
               {!cams ? <div className="kl-muted">กำลังโหลด…</div> : (
                 <div className="bmr-cam-grid">
                   {camsNear.map(({ c, km }) => (
@@ -804,7 +821,7 @@ export function BmrDashboard() {
                   ))}
                 </div>
               )}
-              <div className="kl-muted" style={{ marginTop: 8 }}>ภาพนิ่งจากกล้องจราจรสาธารณะ (iTIC/Longdo, กรมทางหลวง) เลื่อนแผนที่เพื่อเปลี่ยนชุดกล้อง · ไม่มีกล้องของ สนน. ในฟีดสาธารณะ</div>
+              <div className="kl-muted" style={{ marginTop: 8 }}>กล้องจราจรสาธารณะ (iTIC/Longdo) แสดงเฉพาะตัวที่มีภาพ ณ ตอนนี้ — ตรวจใหม่ทุก 10 นาที · แตะเพื่อดูภาพสด · เลื่อนแผนที่เพื่อเปลี่ยนชุดกล้อง · กล้องกรมทางหลวงในฟีดไม่ส่งภาพ และไม่มีกล้องของ สนน. ในฟีดสาธารณะ</div>
             </section>
           ) : null}
 

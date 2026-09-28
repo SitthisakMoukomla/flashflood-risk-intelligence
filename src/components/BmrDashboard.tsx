@@ -132,7 +132,9 @@ function LevelChart({ h, color, label }: { h: History; color: string; label: str
 }
 
 // ─── Main ────────────────────────────────────────────────────────
-export function BmrDashboard() {
+export type FocusTarget = { kind: "bma"; code: string } | { kind: "hii"; id: number };
+
+export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | null; onBack?: () => void } = {}) {
   const mapEl = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<Leaflet.Map | null>(null);
   const LRef = useRef<typeof Leaflet | null>(null);
@@ -563,6 +565,38 @@ export function BmrDashboard() {
 
   const flyTo = (lat: number, lng: number, z = 14) => mapRef.current?.flyTo([lat, lng], Math.max(z, mapRef.current.getZoom()), { duration: 0.6 });
 
+  // Opened from the canal sheet / board with a station in hand: select it
+  // and fly there once its payload is in.
+  const focusedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focus || !mapInst) return;
+    const key = `${focus.kind}:${"code" in focus ? focus.code : focus.id}`;
+    if (focusedRef.current === key) return;
+    let sel: Selected = null;
+    let tabFor: Tab = "canals";
+    let at: [number, number] | null = null;
+    if (focus.kind === "bma") {
+      const g = bma?.gauges.find((x) => x.code === focus.code);
+      if (!g) return;
+      sel = { kind: "bma", code: g.code };
+      at = [g.lat, g.lng];
+    } else {
+      const st = water?.find((x) => x.id === focus.id);
+      if (!st) return;
+      sel = { kind: "hii", id: st.id };
+      tabFor = "rivers";
+      at = [st.station.tele_station_lat, st.station.tele_station_long];
+    }
+    focusedRef.current = key;
+    mapInst.map.flyTo(at, 14, { duration: 0.6 });
+    // Deferred so the selection is not a synchronous set-state in the effect.
+    const t = window.setTimeout(() => {
+      setSelected(sel);
+      setTab(tabFor);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [focus, mapInst, bma, water]);
+
   const clock = now === null ? "--:--:--" : new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: TZ }).format(now);
   const nextIn = updatedAt && now !== null ? Math.max(0, updatedAt + REFRESH_MS - now) : null;
   const radarBucket = Math.floor((now ?? 0) / REFRESH_MS);
@@ -571,9 +605,15 @@ export function BmrDashboard() {
   return (
     <div className="kl-page">
       <header className="kl-head">
-        <Link href="/" className="ms-back" aria-label="กลับไปที่แผนที่ทั่วประเทศ">
-          <ArrowLeft size={18} />
-        </Link>
+        {onBack ? (
+          <button type="button" className="ms-back" onClick={onBack} aria-label="กลับไปผังคลอง">
+            <ArrowLeft size={18} />
+          </button>
+        ) : (
+          <Link href="/" className="ms-back" aria-label="กลับไปที่แผนที่ทั่วประเทศ">
+            <ArrowLeft size={18} />
+          </Link>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h1 className="ms-title">
             <Waves size={19} style={{ color: "var(--accent)", flex: "none" }} />

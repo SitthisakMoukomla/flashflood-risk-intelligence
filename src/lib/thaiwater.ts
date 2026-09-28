@@ -29,6 +29,8 @@ export type ThaiWaterLevelStation = {
   storage_percent: number | string | null;
   flow_rate: number | string | null;
   situation_level: number | null; // 1 (low/safe) → 5 (critical)
+  /** e.g. "แม่น้ำเจ้าพระยา" — lets the canal sheet draw the river. */
+  river_name?: string | null;
   agency: { agency_shortname?: { th?: string; en?: string } };
   basin?: { basin_name?: { th?: string } };
   geocode: { province_code: string; province_name?: { th?: string } };

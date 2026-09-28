@@ -79,3 +79,11 @@ npm run deploy    # ตรวจข้อมูลก่อน แล้วค�
 
 **อย่าใช้ `vercel deploy` ตรงๆ** — มันอ่านไฟล์จากเครื่อง ไม่ใช่จาก git
 ถ้าเผลอมีไฟล์ทดสอบค้างอยู่ มันจะขึ้น production ทันที (เคยเกิดแล้ว ดู LESSONS.md)
+
+### /bmr faces (2026-09-28)
+`BmrApp` picks a face: `BmrSheet` (≥900 px) draws the BMA canal network as
+a transit-style diagram from `lib/schematic.ts` (auto layout: canals with
+≥2 gauges become straight lines, others stay dots, coordinates spread by
+rank; river from HII `river_name`); `BmrBoard` (<900 px) is a departure-board
+list of stations over their line. Both open `BmrDashboard` (the map) with a
+`focus` station; the dashboard's `onBack` returns to the face.

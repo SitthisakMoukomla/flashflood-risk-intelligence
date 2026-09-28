@@ -52,15 +52,16 @@ export function BmrApp() {
           setWater(all.filter((s) => Number.isFinite(s.station?.tele_station_lat) && Number.isFinite(s.station?.tele_station_long) && inBox(s.station.tele_station_lat, s.station.tele_station_long)));
         })
         .catch(() => {}),
-      fetch("/api/bmr/cameras")
-        .then(async (r) => {
-          if (!r.ok) return;
-          const j = (await r.json()) as { cameras: unknown[]; listed?: number };
-          setCams({ live: j.cameras.length, listed: j.listed ?? j.cameras.length });
-        })
-        .catch(() => {}),
     ]);
     setUpdatedAt(Date.now());
+    // The camera probe can take 15–40 s cold; it must not hold the clock.
+    void fetch("/api/bmr/cameras")
+      .then(async (r) => {
+        if (!r.ok) return;
+        const j = (await r.json()) as { cameras: unknown[]; listed?: number };
+        setCams({ live: j.cameras.length, listed: j.listed ?? j.cameras.length });
+      })
+      .catch(() => {});
   }, []);
   useEffect(() => {
     const first = window.setTimeout(() => void load(), 0);

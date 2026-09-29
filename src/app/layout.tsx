@@ -16,6 +16,8 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  // Absolute base for og:image and friends (else Next falls back to localhost).
+  metadataBase: new URL("https://flashflood-risk-intelligence.vercel.app"),
   title: "Flashflood · เตือนภัยน้ำป่าทั่วประเทศ",
   description:
     "แผนที่ความเสี่ยงน้ำป่าทั่วประเทศไทย — ภูมิประเทศ × ดินอิ่มน้ำ × ฝนตอนนี้ แตะจุดใดก็ได้เพื่อดูระดับความเสี่ยง สถานีวัดน้ำใกล้เคียง และน้ำท่วมจากดาวเทียม",

@@ -44,8 +44,6 @@ import {
   rainIntensityColor,
   rainIntensityLabel,
   rainStationColor,
-  THAIWATER_RAIN_24H_URL,
-  THAIWATER_WATERLEVEL_URL,
   type ThaiWaterLevelStation,
   type ThaiWaterStation,
 } from "@/lib/thaiwater";
@@ -583,7 +581,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     let active = true;
     const fetchStations = async () => {
       try {
-        const r = await fetch(THAIWATER_RAIN_24H_URL, { cache: "no-store" });
+        const r = await fetch("/api/hii/rain", { cache: "no-store" });
         if (!r.ok || !active) return;
         const payload = (await r.json()) as { data: ThaiWaterStation[] };
         // Nationwide — drop only rows missing coordinates.
@@ -600,7 +598,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
     };
     const fetchWaterLevel = async () => {
       try {
-        const r = await fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" });
+        const r = await fetch("/api/hii/waterlevel", { cache: "no-store" });
         if (!r.ok || !active) return;
         const payload = (await r.json()) as { data: ThaiWaterLevelStation[] };
         // Nationwide (the Myanmar-side Sai gauges come along for free now).

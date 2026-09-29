@@ -46,8 +46,6 @@ import {
   bankPercentOf,
   rainIntensityColor,
   rainIntensityLabel,
-  THAIWATER_RAIN_24H_URL,
-  THAIWATER_WATERLEVEL_URL,
   type ThaiWaterLevelStation,
   type ThaiWaterStation,
 } from "@/lib/thaiwater";
@@ -293,8 +291,8 @@ export function KrathumLomDashboard() {
       const ok = (s: { station?: { tele_station_lat?: number; tele_station_long?: number } }) =>
         Number.isFinite(s.station?.tele_station_lat) && Number.isFinite(s.station?.tele_station_long);
       const [r, w] = await Promise.all([
-        fetch(THAIWATER_RAIN_24H_URL, { cache: "no-store" }),
-        fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" }),
+        fetch("/api/hii/rain", { cache: "no-store" }),
+        fetch("/api/hii/waterlevel", { cache: "no-store" }),
       ]);
       if (r.ok) setRain(((await r.json()).data as ThaiWaterStation[]).filter(ok));
       if (w.ok) setWater(((await w.json()).data as ThaiWaterLevelStation[]).filter(ok));

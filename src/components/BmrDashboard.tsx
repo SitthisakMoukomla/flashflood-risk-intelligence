@@ -38,8 +38,6 @@ import {
   bankPercentOf,
   rainIntensityColor,
   rainIntensityLabel,
-  THAIWATER_RAIN_24H_URL,
-  THAIWATER_WATERLEVEL_URL,
   type ThaiWaterLevelStation,
   type ThaiWaterStation,
 } from "@/lib/thaiwater";
@@ -209,10 +207,10 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
           setBmaErr(null);
         })
         .catch((e) => setBmaErr(e instanceof Error ? e.message : "relay failed")),
-      fetch(THAIWATER_RAIN_24H_URL, { cache: "no-store" })
+      fetch("/api/hii/rain", { cache: "no-store" })
         .then(async (r) => r.ok && setRain(((await r.json()).data as ThaiWaterStation[]).filter(ok)))
         .catch(() => {}),
-      fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" })
+      fetch("/api/hii/waterlevel", { cache: "no-store" })
         .then(async (r) => r.ok && setWater(((await r.json()).data as ThaiWaterLevelStation[]).filter(ok)))
         .catch(() => {}),
     ]);

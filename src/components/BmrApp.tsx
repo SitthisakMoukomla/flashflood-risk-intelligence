@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { BmaPayload } from "@/lib/bma";
 import type { HiiInput } from "@/lib/schematic";
-import { bankPercentOf, THAIWATER_WATERLEVEL_URL, type ThaiWaterLevelStation } from "@/lib/thaiwater";
+import { bankPercentOf, type ThaiWaterLevelStation } from "@/lib/thaiwater";
 import { BmrBoard } from "./BmrBoard";
 import { BmrDashboard, type FocusTarget } from "./BmrDashboard";
 import { BmrSheet } from "./BmrSheet";
@@ -45,7 +45,7 @@ export function BmrApp() {
           setBmaErr(null);
         })
         .catch((e) => setBmaErr(e instanceof Error ? e.message : "relay failed")),
-      fetch(THAIWATER_WATERLEVEL_URL, { cache: "no-store" })
+      fetch("/api/hii/waterlevel", { cache: "no-store" })
         .then(async (r) => {
           if (!r.ok) return;
           const all = (await r.json()).data as ThaiWaterLevelStation[];

@@ -20,11 +20,12 @@ export type BoardProps = {
   error: string | null;
   onOpen: (t: FocusTarget) => void;
   onMap: () => void;
+  toggle?: React.ReactNode;
 };
 
 type Row = { key: string; target: FocusTarget; name: string; sub: string; level: string; ref: string; over: string; status: string; tone: "red" | "amber" | "dim" };
 
-export function BmrBoard({ bma, hii, cams, updatedAt, error, onOpen, onMap }: BoardProps) {
+export function BmrBoard({ bma, hii, cams, updatedAt, error, onOpen, onMap, toggle }: BoardProps) {
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     for (const g of bma?.gauges ?? []) {
@@ -62,6 +63,7 @@ export function BmrBoard({ bma, hii, cams, updatedAt, error, onOpen, onMap }: Bo
 
   return (
     <div className="board">
+      {toggle}
       <header className="bd-head">
         <div className="bd-mast">
           <span className="bd-title">รอระบาย</span>

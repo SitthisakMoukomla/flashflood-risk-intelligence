@@ -1225,3 +1225,27 @@ a { color: inherit; }
 .sh-kv b.is-red { color: var(--sh-red); } .sh-kv b.is-blue { color: var(--sh-blue); }
 .sh-mapbtn.is-full { width: 100%; justify-content: center; margin-top: 4px; }
 .sh-row.is-on { background: rgba(30,42,46,0.1); }
+
+/* face switcher (phones) */
+.face-toggle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; border: 1.5px solid currentColor; border-radius: 4px; overflow: hidden; font-family: var(--font-chakra), sans-serif; font-weight: 600; letter-spacing: 0.08em; }
+.face-toggle > button { min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.board .face-toggle > button[aria-selected="true"] { background: var(--bd-amber); color: var(--bd-bg); }
+.sheet .face-toggle > button[aria-selected="true"] { background: var(--sh-ink); color: var(--sh-paper); }
+
+/* sheet — compact (phone) */
+.sheet.is-compact { padding: 14px 16px 24px; gap: 12px; }
+.sheet.is-compact .sh-head { flex-direction: column; align-items: stretch; gap: 10px; }
+.sheet.is-compact .sh-title { font-size: 34px; }
+.sheet.is-compact .sh-kicker { font-size: 11px; }
+.sheet.is-compact .sh-stamp { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sheet.is-compact .sh-stamp > div:nth-child(2) { border-right: 0; }
+.sheet.is-compact .sh-stamp > div:nth-child(-n+2) { border-bottom: 1.5px solid var(--sh-ink); }
+.sheet.is-compact .sh-body { grid-template-columns: 1fr; gap: 14px; }
+.sheet.is-compact .sh-canvas { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -16px; padding: 0 16px; scroll-snap-type: none; }
+.sheet.is-compact .sh-svg { width: 1000px; height: 640px; max-width: none; }
+.sheet.is-compact .sh-legend { position: sticky; left: 0; }
+.sheet.is-compact .sh-tip { display: none; }
+.sheet.is-compact .sh-detail { position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 40; max-height: 60dvh; overflow: auto; box-shadow: 0 -8px 30px rgba(0,0,0,0.25); background: #FFFCF6; }
+.sheet.is-compact .sh-foot { text-align: left; }
+.kl-radar-broken { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; padding: 14px; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
+.kl-radar-broken b { color: var(--ink); }

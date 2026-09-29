@@ -22,6 +22,10 @@ export type SheetProps = {
   error: string | null;
   onOpen: (t: FocusTarget) => void;
   onMap: () => void;
+  /** Phone layout: single column, pan-able 1000 px sheet, bottom-sheet detail. */
+  compact?: boolean;
+  /** Face switcher rendered in the header on phones. */
+  toggle?: React.ReactNode;
 };
 
 type Pick = { kind: "bma"; s: SheetStation } | { kind: "hii"; r: RiverStation; onRiver: boolean } | null;
@@ -42,7 +46,7 @@ const STATUS_TH: Record<SheetStation["status"], string> = { critical: "วิก
 const m2 = (v: number | null) => (v === null ? "—" : `${v.toFixed(2)} ม.`);
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`;
 
-export function BmrSheet({ bma, hii, cams, updatedAt, error, onOpen, onMap }: SheetProps) {
+export function BmrSheet({ bma, hii, cams, updatedAt, error, onOpen, onMap, compact = false, toggle }: SheetProps) {
   const sheet = useMemo(() => buildSheet(bma?.gauges ?? [], hii, { w: 1000, h: 640, pad: 30 }), [bma, hii]);
   const stations = useMemo(() => [...sheet.loose, ...sheet.canals.flatMap((c) => c.stations)], [sheet]);
   const critical = stations.filter((s) => s.status === "critical").length;
@@ -193,7 +197,8 @@ export function BmrSheet({ bma, hii, cams, updatedAt, error, onOpen, onMap }: Sh
   };
 
   return (
-    <div className={`sheet${drawn ? " is-drawn" : ""}`}>
+    <div className={`sheet${drawn ? " is-drawn" : ""}${compact ? " is-compact" : ""}`}>
+      {toggle}
       <header className="sh-head">
         <div className="sh-mast">
           <div className="sh-title-row">
@@ -255,7 +260,7 @@ export function BmrSheet({ bma, hii, cams, updatedAt, error, onOpen, onMap }: Sh
             <span><i className="sh-sw is-gate" /> ประตู/สถานีสูบ</span>
             <span><i className="sh-sw is-ring" /> ประตูกันแม่น้ำ (นอก−ใน ≥ 1 ม.)</span>
             <span><i className="sh-sw is-hii" /> สถานี สสน./ชป.</span>
-            <span className="sh-note">ผังไม่ใช่มาตราส่วนจริง — แตะสถานีเพื่อดูรายละเอียด</span>
+            <span className="sh-note">{compact ? "ลากเพื่อดูทั้งผัง · แตะสถานีเพื่อดูรายละเอียด · ผังไม่ใช่มาตราส่วนจริง" : "ผังไม่ใช่มาตราส่วนจริง — แตะสถานีเพื่อดูรายละเอียด"}</span>
           </div>
         </div>
 

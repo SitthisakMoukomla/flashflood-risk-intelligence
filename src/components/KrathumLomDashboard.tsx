@@ -53,8 +53,11 @@ import {
 const DATA = "/data/krathumlom";
 const R2_PUBLIC = "https://pub-3f4b09707ccd46ec948313a3513e3b25.r2.dev";
 const LOG_URLS = [`${R2_PUBLIC}/krathumlom_log.jsonl`, "/data/krathumlom_log.jsonl"];
-const RADAR_URL = "https://weather.tmd.go.th/pic_bmankLoop.gif";
-const RADAR_PAGE = "https://weather.tmd.go.th/bma_nkLoop.php";
+// TMD Suvarnabhumi 120 km loop (covers Krathum Lom, ~45 km west of the
+// radar). The BMA Nong Khaem radar next door has been frozen since
+// 2026-06-01, so TMD's own radar is used instead. Frame times are UTC.
+const RADAR_URL = "https://weather.tmd.go.th/svp/svp120loop.gif";
+const RADAR_PAGE = "https://weather.tmd.go.th/svp120loop.php";
 /** Municipality office (OSM node 7359270019) — distances are measured from here. */
 const CENTRE: [number, number] = [13.7422545, 100.3293329];
 const RAIN_RADIUS_KM = 10;
@@ -679,7 +682,7 @@ export function KrathumLomDashboard() {
               <section className="kl-card">
                 <div className="kl-card-head">
                   <Radar size={16} style={{ color: "#5cc4ee" }} />
-                  เรดาร์หนองแขม
+                  เรดาร์ฝน สุวรรณภูมิ (กรมอุตุฯ)
                   <span className="kl-card-meta">สนน. กทม. · วน 12 ภาพล่าสุด</span>
                   {radarWanted ? (
                     <button className="kl-icon-btn" onClick={() => setRadarZoom((v) => !v)} aria-label={radarZoom ? "ดูทั้งภาพ" : "ขยายรอบเทศบาล"} title={radarZoom ? "ดูทั้งภาพ" : "ขยายรอบเทศบาล"}>
@@ -690,7 +693,7 @@ export function KrathumLomDashboard() {
                 {radarWanted && now !== null ? (
                   <div className={`kl-radar ${radarZoom ? "is-zoom" : ""}`}>
                     {/* eslint-disable-next-line @next/next/no-img-element -- remote animated GIF, refreshed every 5 min */}
-                    <img src={`${RADAR_URL}?t=${radarBucket}`} alt="ภาพเรดาร์ฝนหนองแขม วนภาพล่าสุด" loading="lazy" />
+                    <img src={`${RADAR_URL}?t=${radarBucket}`} alt="ภาพเรดาร์ฝนสุวรรณภูมิ 120 กม. วนภาพล่าสุด" loading="lazy" />
                   </div>
                 ) : (
                   <button className="kl-radar-load" onClick={() => setRadarWanted(true)}>
@@ -699,7 +702,7 @@ export function KrathumLomDashboard() {
                 )}
                 <div className="kl-muted" style={{ marginTop: 6, display: "flex", justifyContent: "space-between", gap: 8 }}>
                   <span>
-                    {radarZoom ? "ขยายรอบจุดตั้งเรดาร์ (หนองแขม) ซึ่งอยู่ติดกระทุ่มล้ม · " : ""}เวลาของภาพอยู่มุมขวาล่าง · เขียว→แดง = ฝนเบา→หนัก
+                    {radarZoom ? "ขยายภาพ · " : ""}เวลาของภาพอยู่มุมขวาล่าง · เขียว→แดง = ฝนเบา→หนัก
                   </span>
                   <a href={RADAR_PAGE} target="_blank" rel="noreferrer" className="kl-link">
                     กรมอุตุฯ <ExternalLink size={11} />

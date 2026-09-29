@@ -45,9 +45,16 @@ import {
 const BBOX = { w: 99.831, s: 13.425, e: 100.964, n: 14.273 };
 const CENTRE: [number, number] = [13.85, 100.5];
 const REFRESH_MS = 5 * 60_000;
+// TMD's Suvarnabhumi radar covers the whole region and is TMD's own; the
+// two BMA radars (Nong Khaem / Nong Chok) are relayed by TMD from BMA and
+// have been frozen at 2026-06-01 09:15 for months (0-byte GIFs on TMD,
+// stale frames on weather.bangkok.go.th). They stay selectable; an empty
+// image is detected at load time and said so. TMD stamps frames in UTC.
 const RADARS = {
-  nk: { label: "หนองแขม (ฝั่งตะวันตก)", url: "https://weather.tmd.go.th/pic_bmankLoop.gif", page: "https://weather.tmd.go.th/bma_nkLoop.php" },
-  nc: { label: "หนองจอก (ฝั่งตะวันออก)", url: "https://weather.tmd.go.th/pic_bmancLoop.gif", page: "https://weather.tmd.go.th/bma_ncLoop.php" },
+  svp240: { label: "สุวรรณภูมิ 240 กม. (กรมอุตุฯ)", url: "https://weather.tmd.go.th/svp/svploop.gif", page: "https://weather.tmd.go.th/svp240loop.php", org: "กรมอุตุฯ" },
+  svp120: { label: "สุวรรณภูมิ 120 กม.", url: "https://weather.tmd.go.th/svp/svp120loop.gif", page: "https://weather.tmd.go.th/svp120loop.php", org: "กรมอุตุฯ" },
+  nk: { label: "หนองแขม (สนน.)", url: "https://weather.tmd.go.th/pic_bmankLoop.gif", page: "https://weather.tmd.go.th/bma_nkLoop.php", org: "สนน. กทม." },
+  nc: { label: "หนองจอก (สนน.)", url: "https://weather.tmd.go.th/pic_bmancLoop.gif", page: "https://weather.tmd.go.th/bma_ncLoop.php", org: "สนน. กทม." },
 } as const;
 type RadarKey = keyof typeof RADARS;
 
@@ -154,7 +161,8 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
 
   const [tab, setTab] = useState<Tab>("now");
   const [selected, setSelected] = useState<Selected>(null);
-  const [radar, setRadar] = useState<RadarKey>("nk");
+  const [radar, setRadar] = useState<RadarKey>("svp240");
+  const [radarBroken, setRadarBroken] = useState<Partial<Record<RadarKey, boolean>>>({});
   const [radarWanted, setRadarWanted] = useState(true);
   const [show, setShow] = useState({ heat: true, bma: true, hii: true, rain: false, cams: true, sar: true });
   const [camTick, setCamTick] = useState(0);
@@ -813,7 +821,7 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
                 <div className="kl-card-head">
                   <Radar size={16} style={{ color: "#5cc4ee" }} />
                   เรดาร์ฝน
-                  <span className="kl-card-meta">สนน. กทม. ผ่านกรมอุตุฯ · วน 12 ภาพล่าสุด</span>
+                  <span className="kl-card-meta">{RADARS[radar].org} · วน 12 ภาพล่าสุด</span>
                 </div>
                 <div className="kl-tabs" style={{ marginBottom: 8, position: "static" }}>
                   {(Object.keys(RADARS) as RadarKey[]).map((k) => (
@@ -822,14 +830,29 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
                 </div>
                 {radarWanted && now !== null ? (
                   <div className="kl-radar">
-                    {/* eslint-disable-next-line @next/next/no-img-element -- remote animated GIF */}
-                    <img src={`${RADARS[radar].url}?t=${radarBucket}`} alt={`เรดาร์ ${RADARS[radar].label}`} loading="lazy" />
+                    {radarBroken[radar] ? (
+                      <div className="kl-radar-broken">
+                        <b>ต้นทางไม่มีภาพ</b>
+                        <span>เรดาร์ {RADARS[radar].label} ส่งภาพว่างมา (สนน. หยุดอัปเดตตั้งแต่ 1 มิ.ย. 69) — ไม่ใช่ปัญหาของหน้านี้</span>
+                        {radar !== "svp240" ? <button type="button" className="kl-radar-load" onClick={() => setRadar("svp240")}>ดูเรดาร์สุวรรณภูมิแทน</button> : null}
+                      </div>
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element -- remote animated GIF
+                      <img
+                        key={`${radar}-${radarBucket}`}
+                        src={`${RADARS[radar].url}?t=${radarBucket}`}
+                        alt={`เรดาร์ ${RADARS[radar].label}`}
+                        loading="lazy"
+                        onLoad={(e) => e.currentTarget.naturalWidth === 0 && setRadarBroken((b) => ({ ...b, [radar]: true }))}
+                        onError={() => setRadarBroken((b) => ({ ...b, [radar]: true }))}
+                      />
+                    )}
                   </div>
                 ) : (
                   <button className="kl-radar-load" onClick={() => setRadarWanted(true)}>แตะเพื่อโหลดภาพเรดาร์ (~4 MB)</button>
                 )}
                 <div className="kl-muted" style={{ marginTop: 6, display: "flex", justifyContent: "space-between" }}>
-                  <span>เวลาของภาพอยู่มุมขวาล่าง · เขียว→แดง = ฝนเบา→หนัก</span>
+                  <span>เวลาในภาพ (มุมขวาล่าง) เป็น UTC — บวก 7 ชม. · เขียว→แดง = ฝนเบา→หนัก</span>
                   <a href={RADARS[radar].page} target="_blank" rel="noreferrer" className="kl-link">กรมอุตุฯ <ExternalLink size={11} /></a>
                 </div>
               </section>

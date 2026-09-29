@@ -21,6 +21,8 @@ export function BmrApp() {
   const [view, setView] = useState<"sheet" | "map">("sheet");
   const [focus, setFocus] = useState<FocusTarget | null>(null);
   const [narrow, setNarrow] = useState<boolean | null>(null);
+  // Phones default to the board; the sheet is a pan-able alternative.
+  const [face, setFace] = useState<"board" | "sheet">("board");
   const [bma, setBma] = useState<BmaPayload | null>(null);
   const [bmaErr, setBmaErr] = useState<string | null>(null);
   const [water, setWater] = useState<ThaiWaterLevelStation[] | null>(null);
@@ -99,5 +101,12 @@ export function BmrApp() {
   if (view === "map") return <BmrDashboard focus={focus} onBack={back} />;
   if (narrow === null) return <div className="sheet" aria-busy="true" />;
   const props = { bma, hii, cams, updatedAt, error: bmaErr, onOpen: open, onMap: () => setView("map") };
-  return narrow ? <BmrBoard {...props} /> : <BmrSheet {...props} />;
+  if (!narrow) return <BmrSheet {...props} />;
+  const toggle = (
+    <div className={`face-toggle is-${face}`} role="tablist" aria-label="มุมมอง">
+      <button type="button" role="tab" aria-selected={face === "board"} onClick={() => setFace("board")}>ป้ายสถานะ</button>
+      <button type="button" role="tab" aria-selected={face === "sheet"} onClick={() => setFace("sheet")}>ผังคลอง</button>
+    </div>
+  );
+  return face === "sheet" ? <BmrSheet {...props} compact toggle={toggle} /> : <BmrBoard {...props} toggle={toggle} />;
 }

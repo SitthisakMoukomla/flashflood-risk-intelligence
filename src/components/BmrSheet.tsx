@@ -203,7 +203,7 @@ export function BmrSheet({ bma, hii, cams, updatedAt, error, onOpen, onMap, comp
         <div className="sh-mast">
           <div className="sh-title-row">
             <span className="sh-title">รอระบาย</span>
-            <span className="sh-kicker">ผังคลอง กทม. · แผ่น 1/1</span>
+            <span className="sh-kicker">ผังคลอง กทม.</span>
           </div>
           <span className="sh-slogan">ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว · Geography Lounge</span>
         </div>

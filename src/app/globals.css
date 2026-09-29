@@ -1195,3 +1195,33 @@ a { color: inherit; }
 .bd-status { font-size: 12px; letter-spacing: 0.1em; }
 .bd-empty { padding: 20px 8px; color: var(--bd-dim); }
 .bd-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 2px solid var(--bd-line); padding-top: 12px; font-size: 10.5px; letter-spacing: 0.12em; color: var(--bd-dim); flex-wrap: wrap; }
+
+/* sheet — interaction & polish */
+.sh-line { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 900ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+.sheet.is-drawn .sh-line { stroke-dashoffset: 0; }
+.sh-dots { opacity: 0; transition: opacity 500ms ease 500ms; }
+.sheet.is-drawn .sh-dots { opacity: 1; }
+.sh-river { opacity: 0; transition: opacity 700ms ease; }
+.sheet.is-drawn .sh-river { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .sh-line, .sh-dots, .sh-river { transition: none; stroke-dashoffset: 0; opacity: 1; } }
+.sh-lbl { paint-order: stroke; stroke: var(--sh-paper); stroke-width: 4px; stroke-linejoin: round; }
+.sh-st.is-picked circle, .sh-st.is-picked rect { stroke-width: 3; }
+.sh-tip { position: fixed; z-index: 30; transform: translate(14px, 14px); pointer-events: none; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; background: var(--sh-ink); color: var(--sh-paper); font-size: 12.5px; line-height: 1.4; border-radius: 3px; max-width: 260px; box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+.sh-tip strong { font-family: var(--font-chakra), sans-serif; font-size: 13px; }
+.sh-err.is-muted { color: var(--sh-muted); }
+.sh-detail-h { display: flex; justify-content: space-between; align-items: center; }
+.sh-x { border: 0; background: transparent; color: inherit; cursor: pointer; display: inline-flex; padding: 4px; min-width: 28px; min-height: 28px; align-items: center; justify-content: center; }
+.sh-detail-b { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; }
+.sh-detail-name { font-size: 15px; font-weight: 600; line-height: 1.35; }
+.sh-badge { align-self: flex-start; font-family: var(--font-chakra), sans-serif; font-size: 11px; letter-spacing: 0.14em; font-weight: 700; padding: 3px 8px; border: 1.5px solid var(--sh-ink); }
+.sh-badge.is-critical { background: var(--sh-red); color: #fff; border-color: var(--sh-red); }
+.sh-badge.is-warning, .sh-badge.is-watch { background: var(--sh-amber); border-color: var(--sh-amber); }
+.sh-badge.is-unknown { color: var(--sh-muted); border-color: var(--sh-muted); }
+.sh-big { font-family: var(--font-chakra), sans-serif; font-size: 40px; font-weight: 700; line-height: 1; }
+.sh-big small { font-size: 13px; font-weight: 600; color: var(--sh-muted); letter-spacing: 0.06em; }
+.sh-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; }
+.sh-kv span { color: var(--sh-muted); }
+.sh-kv b { font-family: var(--font-chakra), sans-serif; font-weight: 600; }
+.sh-kv b.is-red { color: var(--sh-red); } .sh-kv b.is-blue { color: var(--sh-blue); }
+.sh-mapbtn.is-full { width: 100%; justify-content: center; margin-top: 4px; }
+.sh-row.is-on { background: rgba(30,42,46,0.1); }

@@ -8,10 +8,15 @@ import { BmrApp } from "@/components/BmrApp";
 const chakra = Chakra_Petch({ subsets: ["thai", "latin"], weight: ["500", "600", "700"], variable: "--font-chakra", display: "swap" });
 const bai = Bai_Jamjuree({ subsets: ["thai", "latin"], weight: ["400", "500", "600"], variable: "--font-bai", display: "swap" });
 
+const DESCRIPTION =
+  "ผังคลอง กทม. ตามเกณฑ์ของสำนักการระบายน้ำ สถานีแม่น้ำ สสน./ชป. พร้อมแผนที่จริง กราฟ 30 วัน ฝนรายชั่วโมง กล้อง น้ำท่วมจากดาวเทียม เรดาร์ และน้ำทะเลหนุน — 6 จังหวัดกรุงเทพฯ และปริมณฑล";
+
+// opengraph-image.tsx beside this file supplies the live share card.
 export const metadata: Metadata = {
   title: "รอระบาย · กรุงเทพฯ และปริมณฑล · Flashflood",
-  description:
-    "ผังคลอง กทม. ตามเกณฑ์ของสำนักการระบายน้ำ สถานีแม่น้ำ สสน./ชป. พร้อมแผนที่จริง กราฟ 30 วัน ฝนรายชั่วโมง กล้อง น้ำท่วมจากดาวเทียม เรดาร์ และน้ำทะเลหนุน — 6 จังหวัดกรุงเทพฯ และปริมณฑล",
+  description: DESCRIPTION,
+  openGraph: { title: "รอระบาย — ผังคลอง กทม.", description: "ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว", type: "website", locale: "th_TH" },
+  twitter: { card: "summary_large_image", title: "รอระบาย — ผังคลอง กทม.", description: "ข้อมูลมีอยู่ทุกที่ เราแค่หยิบมาวางที่เดียว" },
 };
 
 export default function BmrPage() {

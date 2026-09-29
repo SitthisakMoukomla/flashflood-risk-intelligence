@@ -32,6 +32,11 @@ export type SheetStation = {
   status: BmaStatus;
   kind: BmaGauge["kind"];
   level: number | null;
+  levelOut: number | null;
+  warning: number | null;
+  critical: number | null;
+  bank: number | null;
+  ageMin: number | null;
   /** Metres over the reference line (critical, else warning, else bank). */
   over: number | null;
   /** Gate whose river side is ≥ 1 m above the canal side: holding, not over. */
@@ -176,6 +181,11 @@ export function buildSheet(gauges: BmaGauge[], hii: HiiInput[], opts: { w?: numb
       status: g.status,
       kind: g.kind,
       level: g.level,
+      levelOut: g.levelOut,
+      warning: g.warning,
+      critical: g.critical,
+      bank: g.bank,
+      ageMin: g.ageMin,
       over: overOf(g),
       pressure: gap !== null && gap >= 1,
     };

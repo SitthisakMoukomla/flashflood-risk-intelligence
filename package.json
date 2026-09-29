@@ -11,6 +11,7 @@
     "deploy": "npm run preflight && vercel pull --yes --environment=production && vercel build --prod && vercel deploy --prebuilt --prod --yes"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.8.0",
     "h3-js": "^4.5.0",
     "leaflet": "^1.9.4",

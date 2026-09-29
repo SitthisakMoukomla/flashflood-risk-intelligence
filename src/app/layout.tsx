@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import Script from "next/script";
 import { IBM_Plex_Sans_Thai, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
@@ -53,6 +54,9 @@ export default function RootLayout({
     <html lang="th" className={`${plexThai.variable} ${plexMono.variable}`}>
       <body style={{ fontFamily: "var(--font-plex-thai), var(--font-ui)" }}>
         {children}
+        {/* Vercel Web Analytics: page views/visitors per day, no cookies.
+            Sends nothing until Analytics is enabled on the Vercel project. */}
+        <Analytics />
         <Script id="sw-register" strategy="afterInteractive">
           {`if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }`}
         </Script>

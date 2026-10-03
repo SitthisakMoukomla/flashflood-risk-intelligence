@@ -38,9 +38,12 @@ jobs:
         with:
           sparse-checkout: |
             pipeline/scripts/14_sar_flood.py
+            pipeline/scripts/21_bmr_flood_storeys.py
             pipeline/data/aoi/gadm41_THA_3.json.zip
             public/data/sar_flood.geojson
             public/data/sar_flood_meta.json
+            public/data/bmr/building_storeys.json
+            public/data/bmr/flood_storeys.json
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-python@v5
@@ -72,11 +75,19 @@ jobs:
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
         run: python scripts/14_sar_flood.py --hours ${{ github.event.inputs.hours || '168' }}
 
+      - name: Estimated storeys of BMR buildings on the observed flood
+        working-directory: pipeline
+        # Points come from R2 (script 20); a failure here must not lose the
+        # flood update above.
+        continue-on-error: true
+        run: python scripts/21_bmr_flood_storeys.py
+
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/data/sar_flood.geojson public/data/sar_flood_meta.json
+          git add public/data/bmr/flood_storeys.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "no change in observed flood extent — nothing to commit"
             exit 0

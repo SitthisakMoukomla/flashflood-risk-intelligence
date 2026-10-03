@@ -9,9 +9,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag carrying buildings.pmtiles"
+        description: "Release tag carrying the files"
         required: true
         default: "buildings-v3-20260907"
+      files:
+        description: "Space-separated asset names to copy to R2"
+        required: true
+        default: "buildings.pmtiles"
 
 concurrency:
   group: publish-buildings
@@ -38,15 +42,18 @@ jobs:
       - name: Install deps
         run: pip install --quiet click boto3
 
-      - name: Fetch the archive from the release
+      - name: Fetch the files from the release
         env:
           GH_TOKEN: ${{ github.token }}
+          FILES: ${{ github.event.inputs.files }}
         run: |
-          gh release download "${{ github.event.inputs.tag }}" \
-            --repo "${{ github.repository }}" --pattern buildings.pmtiles --dir pipeline/data/output
-          ls -l pipeline/data/output/buildings.pmtiles
-          # PMTiles v3 magic — refuse anything that is not the archive.
-          [ "$(head -c 7 pipeline/data/output/buildings.pmtiles)" = "PMTiles" ]
+          for f in $FILES; do
+            gh release download "${{ github.event.inputs.tag }}" \
+              --repo "${{ github.repository }}" --pattern "$f" --dir pipeline/data/output
+            ls -l "pipeline/data/output/$f"
+            # PMTiles v3 magic — refuse a .pmtiles that is not an archive.
+            case "$f" in *.pmtiles) [ "$(head -c 7 "pipeline/data/output/$f")" = "PMTiles" ] ;; esac
+          done
 
       - name: Upload to R2
         working-directory: pipeline
@@ -56,12 +63,16 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
-        run: python scripts/r2_upload.py data/output/buildings.pmtiles
+          FILES: ${{ github.event.inputs.files }}
+        run: for f in $FILES; do python scripts/r2_upload.py "data/output/$f"; done
 
       - name: Verify the public URL serves ranges
         env:
           R2_PUBLIC_BASE: ${{ secrets.R2_PUBLIC_BASE }}
+          FILES: ${{ github.event.inputs.files }}
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" -r 0-6 "$R2_PUBLIC_BASE/buildings.pmtiles")
-          echo "range request → $code"
-          [ "$code" = "206" ]
+          for f in $FILES; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -r 0-6 "$R2_PUBLIC_BASE/$f")
+            echo "$f range request → $code"
+            [ "$code" = "206" ]
+          done

@@ -51,11 +51,13 @@ import { computeLiveGrid, layerModes, type LayerMode, type WetnessGrid } from "@
 import {
   buildingsNear,
   floodNear,
+  storeysNear,
   hotspots as findHotspots,
   nearest,
   riskAt,
   HEX_AREA_KM2,
   type FloodNear,
+  type StoreysNear,
   type Hotspot,
   type HotspotSummary,
   type PointRisk,
@@ -87,6 +89,17 @@ type BuildingsOverlayMeta = {
   cols: number;
   total_buildings: number;
 };
+
+/** BMR footprints with an ESTIMATED storey class (pipeline script 20). */
+type BuildingStoreysMeta = {
+  generated_at: string;
+  classes: Record<string, string>;
+  calibration: { matched: number; balanced_accuracy: number; low_rise: { precision: number | null; recall: number | null } };
+  tiles: { file: string; url?: string | null; layer: string; min_zoom: number; max_zoom: number };
+};
+// Same six-province box the /bmr page uses.
+const BMR_BOX = { w: 99.831, s: 13.425, e: 100.964, n: 14.273 };
+const inBmr = (lat: number, lng: number) => lat >= BMR_BOX.s && lat <= BMR_BOX.n && lng >= BMR_BOX.w && lng <= BMR_BOX.e;
 
 /** Nationwide footprint vector tiles (pipeline script 17), hosted on R2. */
 type BuildingsTilesMeta = {
@@ -464,6 +477,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [grid, setGrid] = useState<WetnessGrid | null>(null);
   const [buildingsMeta, setBuildingsMeta] = useState<BuildingsOverlayMeta | null>(null);
   const [buildingsTilesMeta, setBuildingsTilesMeta] = useState<BuildingsTilesMeta | null>(null);
+  const [storeysMeta, setStoreysMeta] = useState<BuildingStoreysMeta | null>(null);
   const [rainLayer, setRainLayer] = useState<RainLayerPayload | null>(null);
 
   // null = no hazard layer shown (basemap visible). Click an active mode
@@ -505,6 +519,7 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
   const [placeRes, setPlaceRes] = useState<{ key: string; value: GeoPlace | null } | null>(null);
   const [floodRes, setFloodRes] = useState<{ key: string; value: FloodNear | null } | null>(null);
   const [buildingsRes, setBuildingsRes] = useState<{ key: string; value: number | null } | null>(null);
+  const [storeysRes, setStoreysRes] = useState<{ key: string; value: StoreysNear | null } | null>(null);
   const [hotspotNames, setHotspotNames] = useState<Record<string, GeoPlace | null>>({});
   // Drawer defaults to closed on phones (the bottom sheet eats too much
   // map otherwise). SSR always renders open; a post-mount effect closes it
@@ -540,6 +555,12 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           if (btRes.ok && active) setBuildingsTilesMeta((await btRes.json()) as BuildingsTilesMeta);
         } catch {
           /* optional — without the archive the density blob stays at every zoom */
+        }
+        try {
+          const stRes = await fetch("/data/bmr/building_storeys.json");
+          if (stRes.ok && active) setStoreysMeta((await stRes.json()) as BuildingStoreysMeta);
+        } catch {
+          /* optional — storey estimates exist only for the Bangkok region */
         }
         try {
           const r = await fetch("/api/sar-mosaic");
@@ -1455,6 +1476,49 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
       cancelled = true;
     };
   }, [inspect, inspectKey, inspectRisk?.inside, buildingsTilesMeta]);
+  // Estimated storeys within 1 km (Bangkok region only), and how many of
+  // those buildings sit on observed flood.
+  const storeysCacheRef = useRef<{ url: string; cache: import("protomaps-leaflet").TileCache } | null>(null);
+  useEffect(() => {
+    const t = storeysMeta?.tiles;
+    const url = t ? t.url || `/data/${t.file}` : null;
+    if (!inspect || !inspectKey || !inspectRisk?.inside || !t || !url || !inBmr(inspect.lat, inspect.lng)) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (storeysCacheRef.current?.url !== url) {
+          const { TileCache, PmtilesSource } = await import("protomaps-leaflet");
+          storeysCacheRef.current = { url, cache: new TileCache(new PmtilesSource(url, false), 256) };
+        }
+        const floodUrl = sarFloodMeta?.tiles ? sarFloodMeta.tiles.url || `/data/${sarFloodMeta.tiles.file}` : null;
+        if (floodUrl && floodArchiveRef.current?.url !== floodUrl) {
+          const { PMTiles } = await import("pmtiles");
+          floodArchiveRef.current = { url: floodUrl, archive: new PMTiles(floodUrl) };
+        }
+        const res = await storeysNear(
+          storeysCacheRef.current.cache as unknown as Parameters<typeof storeysNear>[0],
+          t.layer,
+          floodUrl ? floodArchiveRef.current!.archive : null,
+          inspect.lat,
+          inspect.lng,
+          1,
+        );
+        if (!cancelled) setStoreysRes({ key: inspectKey, value: res });
+      } catch {
+        if (!cancelled) setStoreysRes({ key: inspectKey, value: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inspect, inspectKey, inspectRisk?.inside, storeysMeta, sarFloodMeta]);
+  const inspectStoreys: StoreysNear | null | "loading" =
+    !inspect || !inspectRisk?.inside || !storeysMeta?.tiles || !inBmr(inspect.lat, inspect.lng)
+      ? null
+      : storeysRes?.key === inspectKey
+        ? storeysRes.value
+        : "loading";
+
   const inspectBuildings: number | null | "loading" =
     !inspectRisk?.inside || !buildingsTilesMeta?.tiles
       ? null
@@ -1837,6 +1901,8 @@ export function FloodMap({ copy, sources }: FloodMapProps) {
           flood={inspectFlood}
           floodWindowDays={sarFloodMeta ? Math.round(sarFloodMeta.window_hours / 24) : null}
           buildings={inspectBuildings}
+          storeys={inspectStoreys}
+          storeysAccuracy={storeysMeta?.calibration.low_rise.precision ?? null}
           water={inspectWater}
           rain={inspectRain}
           rainWindowEnd={grid?.rain_window_end ?? null}
@@ -2815,6 +2881,8 @@ function InspectPanel({
   flood,
   floodWindowDays,
   buildings,
+  storeys,
+  storeysAccuracy,
   water,
   rain,
   rainWindowEnd,
@@ -2835,6 +2903,8 @@ function InspectPanel({
   flood: FloodNear | null | "loading";
   floodWindowDays: number | null;
   buildings: number | null | "loading";
+  storeys: StoreysNear | null | "loading";
+  storeysAccuracy: number | null;
   water: { item: ThaiWaterLevelStation; km: number }[];
   rain: { item: ThaiWaterStation; km: number } | null;
   rainWindowEnd: string | null;
@@ -3064,6 +3134,39 @@ function InspectPanel({
                         </>
                       )}
                       <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)" }}>Open Buildings v3</span>
+                    </span>
+                  </div>
+                ) : null}
+
+                {storeys !== null ? (
+                  <div className="dw-card" style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <Building2 size={16} style={{ color: "#e5484d", flex: "none", marginTop: 2 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5 }}>
+                      {storeys === "loading" ? (
+                        <span style={{ color: "var(--ink-3)" }}>กำลังประมาณความสูงอาคาร…</span>
+                      ) : (
+                        <>
+                          <span style={{ display: "block" }}>
+                            ประมาณ <b>อาคารเตี้ย (1–2 ชั้น) ~{formatNumber(storeys.all[1])}</b> · 3 ชั้นขึ้นไป ~{formatNumber(storeys.all[2])} หลัง
+                          </span>
+                          {storeys.onFlood ? (
+                            <span style={{ display: "block", marginTop: 2 }}>
+                              {storeys.onFlood[0] + storeys.onFlood[1] + storeys.onFlood[2] > 0 ? (
+                                <>
+                                  อยู่ในพื้นที่ที่ดาวเทียมเห็นน้ำ ~{formatNumber(storeys.onFlood[0] + storeys.onFlood[1] + storeys.onFlood[2])} หลัง
+                                  {storeys.onFlood[1] > 0 ? <> · <b>อาคารเตี้ย ~{formatNumber(storeys.onFlood[1])}</b></> : null}
+                                </>
+                              ) : (
+                                <>ไม่มีหลังใดในพื้นที่ที่ดาวเทียมเห็นน้ำ</>
+                              )}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                      <span style={{ display: "block", fontSize: 11, color: "var(--ink-3)", lineHeight: 1.45, marginTop: 2 }}>
+                        เป็นการประมาณการ — แบ่งเตี้ย/สูงจากความสูงอาคารที่ Google ประเมินจากภาพดาวเทียม ไม่ใช่ข้อมูลสำรวจ
+                        {storeysAccuracy !== null ? ` · เทียบกับ OSM: ที่ระบุว่า "เตี้ย" ถูก ~${Math.round(storeysAccuracy * 100)}%` : ""}
+                      </span>
                     </span>
                   </div>
                 ) : null}

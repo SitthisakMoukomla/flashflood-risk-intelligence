@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-10-03T13:27:35.731294+00:00",
+  "estimate": true,
+  "note": "จำนวนชั้นเป็นการประมาณจากความสูงอาคารที่ Google ประเมินจากภาพดาวเทียม Sentinel-2 ไม่ใช่ข้อมูลสำรวจ",
+  "sources": [
+    "Google Open Buildings v3 (footprints, conf ≥ 0.7)",
+    "Google Open Buildings 2.5D Temporal 2023 (height)",
+    "OpenStreetMap building:levels (calibration)"
+  ],
+  "classes": {
+    "0": "ไม่ทราบ",
+    "1": "อาคารเตี้ย 1–2 ชั้น (ประมาณ)",
+    "2": "3 ชั้นขึ้นไป (ประมาณ)"
+  },
+  "threshold_m": 6.75,
+  "calibration": {
+    "matched": 20400,
+    "matched_by_levels": {
+      "1": 1015,
+      "2": 6994,
+      "3+": 12391
+    },
+    "balanced_accuracy": 0.749,
+    "accuracy": 0.76,
+    "low_rise": {
+      "precision": 0.693,
+      "recall": 0.698
+    },
+    "three_plus": {
+      "precision": 0.804,
+      "recall": 0.8
+    },
+    "single_vs_two_best_balanced_accuracy": 0.645,
+    "confusion_rows_truth_cols_pred": {
+      "labels": [
+        "1-2",
+        "3+"
+      ],
+      "matrix": [
+        [
+          5594,
+          2415
+        ],
+        [
+          2483,
+          9908
+        ]
+      ]
+    },
+    "caveat": "OSM buildings with a levels tag are not a random sample (city centre, larger buildings over-represented)."
+  },
+  "count": 5242737,
+  "by_class": {
+    "0": 0,
+    "1": 4711136,
+    "2": 531601
+  },
+  "by_province": {
+    "กรุงเทพมหานคร": {
+      "0": 0,
+      "1": 1888746,
+      "2": 304911
+    },
+    "นครปฐม": {
+      "0": 0,
+      "1": 646330,
+      "2": 27775
+    },
+    "นนทบุรี": {
+      "0": 0,
+      "1": 594195,
+      "2": 50884
+    },
+    "ปทุมธานี": {
+      "0": 0,
+      "1": 645716,
+      "2": 46438
+    },
+    "สมุทรปราการ": {
+      "0": 0,
+      "1": 598319,
+      "2": 67619
+    },
+    "สมุทรสาคร": {
+      "0": 0,
+      "1": 340030,
+      "2": 34283
+    }
+  },
+  "tiles": {
+    "file": "buildings_bmr.pmtiles",
+    "url": "https://pub-3f4b09707ccd46ec948313a3513e3b25.r2.dev/buildings_bmr.pmtiles",
+    "layer": "buildings",
+    "min_zoom": 13,
+    "max_zoom": 15,
+    "bytes": 193038515
+  },
+  "points": {
+    "file": "buildings_bmr_points.npz",
+    "url": "https://pub-3f4b09707ccd46ec948313a3513e3b25.r2.dev/buildings_bmr_points.npz"
+  }
+}

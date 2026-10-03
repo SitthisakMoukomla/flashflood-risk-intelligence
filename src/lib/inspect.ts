@@ -370,3 +370,94 @@ export async function buildingsNear(
   );
   return count;
 }
+
+// ─── Estimated low-rise / 3+ near a point (BMR only) ──────────────
+
+/** [unknown, low-rise 1–2 storeys, 3 or more] — ESTIMATED from Google's
+ *  2.5D satellite height model (pipeline script 20). Single vs two storeys
+ *  is not separable with that model, so it is not offered. */
+export type StoreyCounts = [number, number, number];
+
+export type StoreysNear = {
+  radiusKm: number;
+  all: StoreyCounts;
+  /** Of those, footprints whose centre sits on a pixel the Sentinel-1
+   *  flood layer marks as water (null when the flood layer is unavailable). */
+  onFlood: StoreyCounts | null;
+};
+
+type PropsCache = {
+  get: (c: { z: number; x: number; y: number }) => Promise<
+    Map<string, { bbox: { minX: number; minY: number; maxX: number; maxY: number }; props: Record<string, unknown> }[]>
+  >;
+};
+
+/** Read the flood pyramid's alpha at FLOOD_Z for a set of tiles. */
+async function floodAlpha(archive: RasterArchive, tiles: [number, number][]): Promise<Map<string, { w: number; k: number; a: Uint8ClampedArray }>> {
+  const out = new Map<string, { w: number; k: number; a: Uint8ClampedArray }>();
+  await Promise.all(
+    tiles.map(async ([tx, ty]) => {
+      const res = await archive.getZxy(FLOOD_Z, tx, ty);
+      if (!res?.data || res.data.byteLength === 0) return;
+      const bmp = await createImageBitmap(new Blob([res.data]));
+      const canvas = new OffscreenCanvas(bmp.width, bmp.height);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(bmp, 0, 0);
+      const { data } = ctx.getImageData(0, 0, bmp.width, bmp.height);
+      const a = new Uint8ClampedArray(bmp.width * bmp.height);
+      for (let i = 0; i < a.length; i++) a[i] = data[i * 4 + 3];
+      out.set(`${tx}/${ty}`, { w: bmp.width, k: bmp.width / 256, a });
+    }),
+  );
+  return out;
+}
+
+/** Count footprints by estimated storey class inside a circle, and how many
+ *  of them sit on observed flood. Same centre-in-circle rule (and the same
+ *  slight over-count at tile edges) as buildingsNear. */
+export async function storeysNear(
+  cache: PropsCache,
+  layer: string,
+  flood: RasterArchive | null,
+  lat: number,
+  lng: number,
+  radiusKm = 1,
+): Promise<StoreysNear> {
+  const mpp = metresPerPx(lat, BUILDINGS_Z);
+  const [px, py] = worldPx(lat, lng, BUILDINGS_Z);
+  const rPx = (radiusKm * 1000) / mpp;
+  const all: StoreyCounts = [0, 0, 0];
+  const centres: { x: number; y: number; s: number }[] = [];
+  await Promise.all(
+    tilesAround(px, py, rPx).map(async ([tx, ty]) => {
+      const tile = await cache.get({ z: BUILDINGS_Z, x: tx, y: ty });
+      for (const f of tile.get(layer) ?? []) {
+        const cx = tx * 256 + (f.bbox.minX + f.bbox.maxX) / 2;
+        const cy = ty * 256 + (f.bbox.minY + f.bbox.maxY) / 2;
+        if (Math.hypot(cx - px, cy - py) > rPx) continue;
+        const s = Number(f.props.s);
+        const k = s === 1 || s === 2 ? s : 0;
+        all[k]++;
+        centres.push({ x: cx, y: cy, s: k });
+      }
+    }),
+  );
+  if (!flood) return { radiusKm, all, onFlood: null };
+
+  // Building centres in z14 world px → z11 flood px (factor 8).
+  const f = 2 ** (BUILDINGS_Z - FLOOD_Z);
+  const [fpx, fpy] = [px / f, py / f];
+  const alpha = await floodAlpha(flood, tilesAround(fpx, fpy, rPx / f + 1));
+  const onFlood: StoreyCounts = [0, 0, 0];
+  for (const c of centres) {
+    const gx = c.x / f;
+    const gy = c.y / f;
+    const t = alpha.get(`${Math.floor(gx / 256)}/${Math.floor(gy / 256)}`);
+    if (!t) continue;
+    const x = Math.floor((gx % 256) * t.k);
+    const y = Math.floor((gy % 256) * t.k);
+    if (t.a[y * t.w + x] > 0) onFlood[c.s]++;
+  }
+  return { radiusKm, all, onFlood };
+}

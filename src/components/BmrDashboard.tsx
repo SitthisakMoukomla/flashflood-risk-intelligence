@@ -16,6 +16,7 @@
 
 import {
   ArrowLeft,
+  Building2,
   Camera as CameraIcon,
   CloudRain,
   Droplets,
@@ -164,7 +165,11 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
   const [radar, setRadar] = useState<RadarKey>("svp240");
   const [radarBroken, setRadarBroken] = useState<Partial<Record<RadarKey, boolean>>>({});
   const [radarWanted, setRadarWanted] = useState(true);
-  const [show, setShow] = useState({ heat: true, bma: true, hii: true, rain: false, cams: true, sar: true });
+  const [show, setShow] = useState({ heat: true, bma: true, hii: true, rain: false, cams: true, sar: true, storeys: false });
+  // Estimated storey classes per footprint (pipeline script 20) and today's
+  // count on observed flood (script 21) — both ESTIMATES, labelled as such.
+  const [storeys, setStoreys] = useState<{ tiles: { file: string; url?: string | null; layer: string; min_zoom: number; max_zoom: number } } | null>(null);
+  const [floodStoreys, setFloodStoreys] = useState<{ flood_generated_at: string | null; buildings_on_flood: number; by_class: Record<string, number> } | null>(null);
   const [camTick, setCamTick] = useState(0);
   const [mapCentre, setMapCentre] = useState<[number, number]>(CENTRE);
 
@@ -185,9 +190,17 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
   useEffect(() => {
     (async () => {
       try {
-        const [p, s, c] = await Promise.all([fetch("/data/bmr/provinces.geojson"), fetch("/data/sar_flood_meta.json"), fetch("/api/bmr/cameras")]);
+        const [p, s, c, st, fs] = await Promise.all([
+          fetch("/data/bmr/provinces.geojson"),
+          fetch("/data/sar_flood_meta.json"),
+          fetch("/api/bmr/cameras"),
+          fetch("/data/bmr/building_storeys.json").catch(() => null),
+          fetch("/data/bmr/flood_storeys.json").catch(() => null),
+        ]);
         if (p.ok) setProvinces((await p.json()) as GeoJSON.FeatureCollection);
         if (s.ok) setSar((await s.json()) as SarFloodMeta);
+        if (st?.ok) setStoreys(await st.json());
+        if (fs?.ok) setFloodStoreys(await fs.json());
         if (c.ok) {
           const j = (await c.json()) as { cameras: Camera[]; listed?: number };
           setCams(j.cameras);
@@ -437,6 +450,39 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
     };
   }, [mapInst, show.sar, sar]);
 
+  // Footprints coloured by ESTIMATED storeys — from z14, where single
+  // houses are distinguishable.
+  useEffect(() => {
+    if (!mapInst) return;
+    let cancelled = false;
+    if (!show.storeys || !storeys?.tiles) {
+      swap("storeys", null);
+      return;
+    }
+    (async () => {
+      const { leafletLayer, PolygonSymbolizer } = await import("protomaps-leaflet");
+      if (cancelled) return;
+      const t = storeys.tiles;
+      const rule = (cls: number, fill: string) => ({
+        dataSource: t.layer,
+        dataLayer: t.layer,
+        filter: (_z: number, f: { props: Record<string, unknown> }) => Number(f.props.s) === cls,
+        symbolizer: new PolygonSymbolizer({ fill, opacity: 0.85, stroke: "#0a1318", width: 0.6 }),
+      });
+      const layer = leafletLayer({
+        sources: { [t.layer]: { url: t.url || `/data/${t.file}`, levelDiff: 0, maxDataZoom: t.max_zoom } },
+        minZoom: t.min_zoom,
+        maxZoom: 19,
+        attribution: "Google Open Buildings v3 + 2.5D (ประมาณเตี้ย/สูง)",
+        paintRules: [rule(1, "#f5a524"), rule(2, "#8e8ce8"), rule(0, "#5b6a70")],
+      }) as unknown as Leaflet.Layer;
+      if (!cancelled) swap("storeys", layer);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapInst, show.storeys, storeys]);
+
   // Exceedance heat — where the canal system is over its limits, weighted
   // by how far over. A blinking square only says a line was crossed; the
   // surface shows a basin failing together. Includes HII/RID gauges over
@@ -685,6 +731,18 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
           </span>
           <span className="kl-kpi-sub">{sar ? `Sentinel-1 · ถึง ${fmtTime(sar.generated_at)}` : "—"}</span>
         </div>
+        {floodStoreys ? (
+          <div className="kl-kpi">
+            <span className="kl-kpi-label"><Building2 size={13} /> อาคารเตี้ย (1–2 ชั้น) ในพื้นที่ดาวเทียมเห็นน้ำ</span>
+            <span className="kl-kpi-val num-mono">
+              ~{n0(floodStoreys.by_class["1"] ?? 0)}
+              <small> หลัง (ประมาณ)</small>
+            </span>
+            <span className="kl-kpi-sub">
+              จาก ~{n0(floodStoreys.buildings_on_flood)} หลังใน 6 จังหวัด · ขั้นต่ำ: เรดาร์มองไม่เห็นน้ำระหว่างตึก · แบ่งเตี้ย/สูงจากความสูงที่ Google ประเมินจากภาพดาวเทียม ไม่ใช่ข้อมูลสำรวจ
+            </span>
+          </div>
+        ) : null}
       </section>
 
       <div className="kl-body">
@@ -702,6 +760,7 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
                 ["rain", "สถานีฝน"],
                 ["cams", cams ? `กล้อง (มีภาพ ${cams.length}${camsListed ? `/${camsListed}` : ""})` : "กล้อง"],
                 ["sar", "น้ำท่วมจากดาวเทียม 7 วัน"],
+                ...(storeys ? ([["storeys", "อาคาร: เตี้ย 1–2 ชั้น / 3 ชั้นขึ้นไป (ประมาณ, ซูมใกล้)"]] as [keyof typeof show, string][]) : []),
               ] as [keyof typeof show, string][]
             ).map(([k, label]) => (
               <label key={k} className="kl-check">
@@ -720,6 +779,13 @@ export function BmrDashboard({ focus = null, onBack }: { focus?: FocusTarget | n
               <span className="kl-chip"><span className="sw" style={{ background: "#22d3ee", opacity: 0.8 }} /> ดาวเทียมเห็นน้ำ</span>
               <span className="kl-chip"><span className="bmr-cam" style={{ fontSize: 12 }}>▣</span> กล้อง</span>
             </span>
+            {show.storeys && storeys ? (
+              <span className="kl-legend-row">
+                <span className="kl-chip"><span className="sw" style={{ background: "#f5a524" }} /> อาคารเตี้ย 1–2 ชั้น</span>
+                <span className="kl-chip"><span className="sw" style={{ background: "#8e8ce8" }} /> 3 ชั้นขึ้นไป</span>
+                <span className="kl-chip" style={{ opacity: 0.8 }}>ประมาณจากความสูงที่ Google ประเมินจากภาพดาวเทียม ไม่ใช่ข้อมูลสำรวจ</span>
+              </span>
+            ) : null}
           </div>
         </div>
 

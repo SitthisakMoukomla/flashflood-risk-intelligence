@@ -54,7 +54,9 @@ def main(points_path: str | None) -> None:
     if points_path:
         npz = np.load(points_path)
     else:
-        with urllib.request.urlopen(storeys["points"]["url"], context=SSL_CTX, timeout=120) as r:
+        # r2.dev refuses Python's default User-Agent with a 403.
+        req = urllib.request.Request(storeys["points"]["url"], headers={"User-Agent": "FlashfloodRiskIntelligence/1.0 (pipeline)"})
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=120) as r:
             npz = np.load(io.BytesIO(r.read()))
     lng, lat, s = npz["lng"].astype(np.float64), npz["lat"].astype(np.float64), npz["s"]
 
